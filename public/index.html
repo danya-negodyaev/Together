@@ -114,6 +114,11 @@
       <div class="chat-head"><span>Чат</span><button id="chatClose" class="ib small" type="button" data-icon="close" title="Скрыть чат" aria-label="Скрыть чат"></button></div>
       <div id="messages" class="messages"></div>
       <div id="reactBar" class="react-bar"></div>
+      <div id="replyBar" class="reply-bar" hidden>
+        <span class="rb-ic" data-icon="reply"></span>
+        <div class="rq"><span id="replyWho" class="rq-who"></span><span id="replyText" class="rq-tx"></span></div>
+        <button id="replyCancel" class="ib small" type="button" data-icon="close" title="Отменить ответ" aria-label="Отменить ответ"></button>
+      </div>
       <form id="chatForm" class="chat-form" autocomplete="off">
         <input id="chatInput" class="field" maxlength="1000" placeholder="Сообщение…" enterkeyhint="send" aria-label="Сообщение">
         <button class="send" type="submit" title="Отправить" aria-label="Отправить" data-icon="send"></button>

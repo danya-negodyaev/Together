@@ -37,6 +37,7 @@ const STATIC_TYPES = {
 };
 const REACTIONS = ['😂', '😱', '❤️', '🔥', '👍', '😭'];
 const MAX_CHAT = 300;
+const REPLY_QUOTE_MAX = 160;      // сколько символов исходного сообщения хранится в цитате ответа
 const LEAVE_GRACE_MS = 8000;      // сколько ждём переподключения, прежде чем считать, что человек ушёл
 const STALE_CLIENT_MS = 120000;   // клиент молчит дольше — считаем отключённым (фоновые вкладки шлют сигналы реже)
 const SEC_HEADERS = {
@@ -318,6 +319,26 @@ function pushMsg(m) {
   saveSoon();
 }
 
+/**
+ * Краткая копия сообщения, на которое отвечают. Хранится прямо в ответе,
+ * поэтому цитата не пропадёт, даже когда оригинал уйдёт из истории чата.
+ */
+function replySnapshot(id) {
+  if (typeof id !== 'string' || !id) return null;
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const m = chat[i];
+    if (m.id !== id) continue;
+    if (m.kind !== 'user') return null; // отвечать можно только на сообщения людей
+    return { id: m.id, from: m.from, uid: m.uid, text: m.text.replace(/\s+/g, ' ').slice(0, REPLY_QUOTE_MAX) };
+  }
+  return null;
+}
+
+/** Проверяет цитату из сохранённого файла: битую просто отбрасываем. */
+function validReply(r) {
+  return !!r && typeof r === 'object' && typeof r.id === 'string' && typeof r.text === 'string' && typeof r.from === 'string';
+}
+
 /** Системное сообщение. Повторяющиеся (например, несколько перемоток подряд) склеиваются. */
 function sysMsg(text, by, tag) {
   const last = chat[chat.length - 1];
@@ -354,7 +375,9 @@ function loadState() {
   try { d = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch { return; }
   if (Array.isArray(d.chat)) {
     for (const m of d.chat.slice(-MAX_CHAT)) {
-      if (m && typeof m.text === 'string' && typeof m.id === 'string') chat.push(m);
+      if (!m || typeof m.text !== 'string' || typeof m.id !== 'string') continue;
+      if (m.reply !== undefined && !validReply(m.reply)) delete m.reply;
+      chat.push(m);
     }
   }
   if (d.room) {
@@ -435,7 +458,11 @@ function handleAction(client, body) {
     case 'chat': {
       const text = cleanText(body.text, 1000);
       if (!text) return false;
-      pushMsg({ kind: 'user', from: client.name, uid: client.uid, text });
+      const msg = { kind: 'user', from: client.name, uid: client.uid, text };
+      // Ответ на сообщение: если исходное не нашлось, отправляем как обычное
+      const reply = replySnapshot(body.replyTo);
+      if (reply) msg.reply = reply;
+      pushMsg(msg);
       return true;
     }
     case 'react': {

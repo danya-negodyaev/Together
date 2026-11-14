@@ -72,6 +72,7 @@
     folder: '<path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>',
     download: '<path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>',
     close: '<path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>',
+    reply: '<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/>',
     refresh: '<path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>',
   };
   const svgIcon = (name) => '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (ICONS[name] || '') + '</svg>';
@@ -105,6 +106,7 @@
     'tapjoin', 'tapjoinBtn', 'controls', 'scrub', 'scrubBuf', 'scrubProg', 'scrubKnob', 'scrubTip', 'playBtn', 'backBtn',
     'fwdBtn', 'time', 'muteBtn', 'vol', 'ccBtn', 'chatBtn', 'chatBadge', 'fsBtn', 'srcTitle', 'srcMeta', 'srcPeers',
     'pickMovieBtn', 'pickFileBtn', 'pickSubsBtn', 'chat', 'chatClose', 'messages', 'reactBar', 'chatForm', 'chatInput',
+    'replyBar', 'replyWho', 'replyText', 'replyCancel',
     'picker', 'pickerList', 'pickerFoot', 'pickerRefresh', 'pickerClose', 'fileInput', 'subsInput',
   ].forEach((id) => { E[id] = document.getElementById(id); });
   E.modeBtns = document.querySelectorAll('[data-mode]');
@@ -158,6 +160,7 @@
     lastCT: 0,
     pseudoFs: false,
     chatOpen: null,
+    replyTo: null,        // { id, from } — на какое сообщение сейчас отвечаем
     unread: 0,
     lastStatusKey: '',
     lastStatusAt: 0,
@@ -880,11 +883,31 @@
   }
 
   // ---------------------------------------------------------------- чат
-  const msgEls = new Map();
+  const msgEls = new Map();   // id → DOM-узел сообщения
+  const msgData = new Map();  // id → само сообщение (нужно, чтобы на него ответить)
+  const SWIPE_REPLY = 56;     // на столько пикселей сдвинуть сообщение влево, чтобы ответить
 
   function chatVisible() {
     const b = document.body.classList;
     return !b.contains('immersive') || b.contains('chat-open');
+  }
+
+  /** Текст в одну строку — для цитат. */
+  function oneLine(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Цитата исходного сообщения внутри ответа. По клику — прокрутка к оригиналу. */
+  function buildQuote(r) {
+    const q = el('div', 'quote');
+    q.dataset.jump = r.id;
+    q.title = 'Показать исходное сообщение';
+    q.style.borderLeftColor = nameColor(r.from);
+    const w = el('span', 'q-who', r.from);
+    w.style.color = nameColor(r.from);
+    q.appendChild(w);
+    q.appendChild(el('span', 'q-tx', oneLine(r.text)));
+    return q;
   }
 
   function buildMsg(m) {
@@ -894,20 +917,30 @@
       return d;
     }
     const mine = m.uid === S.uid;
-    const d = el('div', 'msg' + (mine ? ' me' : ''));
+    const toMe = !mine && !!m.reply && m.reply.uid === S.uid; // ответили на твоё сообщение
+    const d = el('div', 'msg' + (mine ? ' me' : '') + (toMe ? ' to-me' : ''));
     if (!mine) {
       const w = el('span', 'who', m.from);
       w.style.color = nameColor(m.from);
       d.appendChild(w);
     }
+    if (m.reply) d.appendChild(buildQuote(m.reply));
     d.appendChild(el('span', 'tx', m.text));
     d.appendChild(el('span', 't', hhmm(m.ts)));
+    // Кнопка «Ответить»: на компьютере видна при наведении, на телефоне — после касания сообщения
+    const rb = el('button', 'rp');
+    rb.type = 'button';
+    rb.title = 'Ответить';
+    rb.setAttribute('aria-label', 'Ответить');
+    rb.innerHTML = svgIcon('reply');
+    d.appendChild(rb);
     return d;
   }
 
   function renderChat(list) {
     E.messages.textContent = '';
     msgEls.clear();
+    msgData.clear();
     if (!list.length) E.messages.appendChild(el('div', 'chat-empty', 'Пока тихо. Напиши что-нибудь 🙂'));
     list.forEach((m) => addMsg(m, false));
     E.messages.scrollTop = E.messages.scrollHeight;
@@ -919,12 +952,16 @@
     if (placeholder) placeholder.remove();
     const near = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
     const node = buildMsg(m);
+    node.dataset.id = m.id;
     const old = msgEls.get(m.id);
     if (old && old.parentNode) old.replaceWith(node);
     else box.appendChild(node);
     msgEls.set(m.id, node);
+    msgData.set(m.id, m);
+    // Слишком старые сообщения убираем со страницы вместе с записями о них
     while (box.childElementCount > 400) {
       const first = box.firstElementChild;
+      if (first.dataset.id) { msgEls.delete(first.dataset.id); msgData.delete(first.dataset.id); }
       first.remove();
     }
     if (near || (m.uid === S.uid && m.kind === 'user')) box.scrollTop = box.scrollHeight;
@@ -937,10 +974,12 @@
   function showToast(m) {
     const t = el('div', 'toast' + (m.kind === 'system' ? ' sys' : ''));
     if (m.kind === 'user') {
-      const b = el('b', null, m.from + ': ');
+      const b = el('b', null, m.from);
       b.style.color = nameColor(m.from);
       t.appendChild(b);
-      t.appendChild(document.createTextNode(m.text));
+      // Если ответили именно тебе — подписываем, чтобы было понятно, к чему реплика
+      if (m.reply && m.reply.uid === S.uid) t.appendChild(el('span', 'to-me', ' в ответ тебе'));
+      t.appendChild(document.createTextNode(': ' + m.text));
     } else {
       t.textContent = m.text;
     }
@@ -959,13 +998,122 @@
     E.chatBadge.hidden = true;
   }
 
+  // ---------------------------------------------------------------- ответы на сообщения
+  /** Сохраняет прокрутку у нижнего края, когда над полем ввода появляется или исчезает панель ответа. */
+  function keepBottom(fn) {
+    const box = E.messages;
+    const near = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+    fn();
+    if (near) box.scrollTop = box.scrollHeight;
+  }
+
+  function startReply(id) {
+    const m = msgData.get(id);
+    if (!m || m.kind !== 'user') return;
+    S.replyTo = { id: m.id, from: m.from };
+    E.replyWho.textContent = m.from;
+    E.replyWho.style.color = nameColor(m.from);
+    E.replyBar.style.borderLeftColor = nameColor(m.from);
+    E.replyText.textContent = oneLine(m.text);
+    keepBottom(() => { E.replyBar.hidden = false; });
+    clearSelected();
+    E.chatInput.focus();
+  }
+
+  function cancelReply() {
+    if (!S.replyTo) return;
+    S.replyTo = null;
+    keepBottom(() => { E.replyBar.hidden = true; });
+  }
+
+  function clearSelected() {
+    E.messages.querySelectorAll('.msg.sel').forEach((n) => n.classList.remove('sel'));
+  }
+
+  /** Прокрутить ленту к исходному сообщению и ненадолго подсветить его. */
+  function jumpTo(id) {
+    const node = msgEls.get(id);
+    if (!node || !node.isConnected) { flash('Этого сообщения уже нет в истории'); return; }
+    const box = E.messages;
+    box.scrollTo({ top: node.offsetTop - (box.clientHeight - node.offsetHeight) / 2, behavior: 'smooth' });
+    node.classList.add('hl');
+    clearTimeout(node.hlTimer);
+    node.hlTimer = setTimeout(() => node.classList.remove('hl'), 1400);
+  }
+
+  // Свайп сообщения влево на сенсорном экране — ответить на него (как в Telegram)
+  let swipe = null;       // текущий жест: { node, pid, x, y, dx, active }
+  let swipeEndAt = 0;     // когда закончился свайп — чтобы следом не сработало касание
+  let lastPointer = 'mouse';
+
+  E.messages.addEventListener('pointerdown', (e) => {
+    lastPointer = e.pointerType;
+    if (e.pointerType === 'mouse') return;
+    const node = e.target.closest('.msg');
+    if (!node || e.target.closest('.rp')) return;
+    swipe = { node, pid: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, active: false };
+  });
+
+  E.messages.addEventListener('pointermove', (e) => {
+    if (!swipe || e.pointerId !== swipe.pid) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    if (!swipe.active) {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;                     // пока непонятно, что за жест
+      if (dx > -12 || Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }  // прокрутка ленты или свайп вправо
+      swipe.active = true;
+      swipe.node.classList.add('swiping');
+    }
+    swipe.dx = Math.max(-SWIPE_REPLY * 1.4, Math.min(0, dx));
+    swipe.node.style.transform = 'translateX(' + swipe.dx + 'px)';
+    swipe.node.classList.toggle('swipe-ok', swipe.dx <= -SWIPE_REPLY);
+  });
+
+  function endSwipe(e) {
+    if (!swipe || e.pointerId !== swipe.pid) return;
+    const s = swipe;
+    swipe = null;
+    if (!s.active) return;
+    swipeEndAt = Date.now();
+    s.node.classList.remove('swiping', 'swipe-ok');
+    s.node.style.transform = '';
+    if (e.type === 'pointerup' && s.dx <= -SWIPE_REPLY) startReply(s.node.dataset.id);
+  }
+  E.messages.addEventListener('pointerup', endSwipe);
+  E.messages.addEventListener('pointercancel', endSwipe);
+
+  // Нажатия в ленте: кнопка «Ответить», цитата, выбор сообщения пальцем
+  E.messages.addEventListener('click', (e) => {
+    if (Date.now() - swipeEndAt < 400) return; // это был свайп, а не касание
+    const t = e.target;
+    const rb = t.closest('.rp');
+    if (rb) { startReply(rb.closest('.msg').dataset.id); return; }
+    const q = t.closest('.quote');
+    if (q) { jumpTo(q.dataset.jump); return; }
+    // На сенсорном экране касание сообщения показывает у него кнопку «Ответить»
+    if (lastPointer !== 'mouse') {
+      const node = t.closest('.msg');
+      const was = !!node && node.classList.contains('sel');
+      clearSelected();
+      if (node && !was) node.classList.add('sel');
+    }
+  });
+
+  E.replyCancel.addEventListener('click', () => {
+    cancelReply();
+    if (!COARSE) E.chatInput.focus();
+  });
+
   E.chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = E.chatInput.value.trim();
     if (!text) return;
     if (!S.ready) { flash('Нет связи с сервером'); return; }
     E.chatInput.value = '';
-    act('chat', { text });
+    const payload = { text };
+    if (S.replyTo) payload.replyTo = S.replyTo.id;
+    cancelReply();
+    act('chat', payload);
   });
 
   // ================================================================ полноэкранный режим
@@ -1143,7 +1291,8 @@
     if (!S.room || E.app.hidden) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
-      if (e.key === 'Escape' && t === E.chatInput) t.blur();
+      // Esc в поле чата: сначала отменяет ответ, повторное нажатие убирает фокус
+      if (e.key === 'Escape' && t === E.chatInput) { if (S.replyTo) cancelReply(); else t.blur(); }
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
