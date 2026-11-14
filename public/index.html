@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0d11">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Together">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+<title>Together</title>
+</head>
+<body>
+
+<!-- ============ Вход ============ -->
+<section id="login" class="login" hidden>
+  <form id="loginForm" class="card" autocomplete="on" novalidate>
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 64 64"><circle cx="24" cy="32" r="18" fill="#ff6b3d"/><circle cx="40" cy="32" r="18" fill="#ffb547" fill-opacity=".85"/><path d="M28 23.5v17l13-8.5z" fill="#fff"/></svg>
+    </div>
+    <h1>Together</h1>
+    <p class="sub">Кино вдвоём, даже на расстоянии</p>
+    <label>Как тебя зовут
+      <input id="nameInput" class="field" maxlength="24" autocomplete="nickname" autocapitalize="words" enterkeyhint="next" required>
+    </label>
+    <label id="passLabel">Пароль комнаты
+      <input id="passInput" class="field" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+    </label>
+    <button class="btn primary" type="submit">Войти</button>
+    <p id="loginError" class="error" role="alert" hidden></p>
+  </form>
+</section>
+
+<!-- ============ Приложение ============ -->
+<main id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-text">Together</span></div>
+    <div class="seg" role="group" aria-label="Режим просмотра">
+      <button type="button" data-mode="stream" title="Фильм идёт с компьютера, где запущен сервер">С компьютера</button>
+      <button type="button" data-mode="local" title="У каждого свой файл, синхронизируется только управление">Свой файл</button>
+    </div>
+    <div id="people" class="people"></div>
+    <span id="conn" class="conn" title="Соединение с сервером"></span>
+  </header>
+
+  <div id="layout" class="layout">
+    <div class="main-col">
+      <div id="stage" class="stage">
+        <video id="video" playsinline webkit-playsinline preload="auto"></video>
+
+        <div id="empty" class="empty" hidden>
+          <span class="empty-icon" data-icon="movie"></span>
+          <h2 id="emptyTitle"></h2>
+          <p id="emptyText"></p>
+          <button id="emptyBtn" class="btn primary" type="button"></button>
+        </div>
+
+        <div id="wait" class="pill wait" hidden>
+          <span class="spinner"></span><span id="waitText"></span>
+          <button id="waitSkip" type="button">Не ждать</button>
+        </div>
+        <div id="offline" class="pill offline" hidden><span class="spinner"></span>Нет связи с сервером, переподключаемся…</div>
+
+        <div id="reactLayer" class="react-layer" aria-hidden="true"></div>
+        <div id="toasts" class="toasts" aria-live="polite"></div>
+        <div id="flash" class="flash" hidden></div>
+
+        <div id="tapjoin" class="tapjoin" hidden>
+          <button id="tapjoinBtn" type="button" class="btn primary big"><span data-icon="play"></span>Нажми, чтобы присоединиться</button>
+        </div>
+
+        <div id="controls" class="controls">
+          <div id="scrub" class="scrub" aria-label="Перемотка">
+            <div class="track"><div id="scrubBuf" class="buf"></div><div id="scrubProg" class="prog"></div></div>
+            <div id="scrubKnob" class="knob"></div>
+            <div id="scrubTip" class="tip"></div>
+          </div>
+          <div class="row">
+            <button id="playBtn" class="ib" type="button" title="Воспроизведение / пауза (пробел)" aria-label="Воспроизведение"></button>
+            <button id="backBtn" class="ib" type="button" title="Назад на 10 секунд (←)" aria-label="Назад на 10 секунд" data-icon="back10"></button>
+            <button id="fwdBtn" class="ib" type="button" title="Вперёд на 10 секунд (→)" aria-label="Вперёд на 10 секунд" data-icon="fwd10"></button>
+            <span id="time" class="time">0:00 / 0:00</span>
+            <span class="spacer"></span>
+            <button id="muteBtn" class="ib" type="button" title="Звук (M)" aria-label="Звук"></button>
+            <input id="vol" class="vol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Громкость">
+            <button id="ccBtn" class="ib" type="button" title="Субтитры (C)" aria-label="Субтитры" data-icon="cc"></button>
+            <button id="chatBtn" class="ib chat-btn" type="button" title="Чат" aria-label="Чат" data-icon="chat"><span id="chatBadge" class="badge-dot" hidden></span></button>
+            <button id="fsBtn" class="ib" type="button" title="Во весь экран (F)" aria-label="Во весь экран"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sourcebar">
+        <div class="src-info">
+          <div id="srcTitle" class="src-title"></div>
+          <div id="srcMeta" class="src-meta"></div>
+          <div id="srcPeers" class="src-peers"></div>
+        </div>
+        <div class="src-actions">
+          <button id="pickMovieBtn" class="btn" type="button"><span data-icon="movie"></span>Выбрать фильм</button>
+          <label id="pickFileBtn" class="btn" for="fileInput"><span data-icon="folder"></span>Выбрать файл</label>
+          <label id="pickSubsBtn" class="btn ghost" for="subsInput"><span data-icon="cc"></span>Субтитры</label>
+        </div>
+      </div>
+    </div>
+
+    <aside id="chat" class="chat">
+      <div class="chat-head"><span>Чат</span><button id="chatClose" class="ib small" type="button" data-icon="close" title="Скрыть чат" aria-label="Скрыть чат"></button></div>
+      <div id="messages" class="messages"></div>
+      <div id="reactBar" class="react-bar"></div>
+      <form id="chatForm" class="chat-form" autocomplete="off">
+        <input id="chatInput" class="field" maxlength="1000" placeholder="Сообщение…" enterkeyhint="send" aria-label="Сообщение">
+        <button class="send" type="submit" title="Отправить" aria-label="Отправить" data-icon="send"></button>
+      </form>
+    </aside>
+  </div>
+</main>
+
+<!-- ============ Выбор фильма ============ -->
+<div id="picker" class="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+    <header>
+      <h3 id="pickerTitle">Фильмы на компьютере</h3>
+      <div>
+        <button id="pickerRefresh" class="ib small" type="button" data-icon="refresh" title="Обновить список" aria-label="Обновить список"></button>
+        <button id="pickerClose" class="ib small" type="button" data-icon="close" title="Закрыть" aria-label="Закрыть"></button>
+      </div>
+    </header>
+    <div id="pickerList" class="movie-list"></div>
+    <footer id="pickerFoot" class="picker-foot"></footer>
+  </div>
+</div>
+
+<input id="fileInput" class="vh" type="file" accept="video/*,.mp4,.m4v,.mov,.webm,.mkv" tabindex="-1">
+<input id="subsInput" class="vh" type="file" accept=".srt,.vtt" tabindex="-1">
+
+<script src="/app.js"></script>
+</body>
+</html>
