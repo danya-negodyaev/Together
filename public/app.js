@@ -53,6 +53,12 @@
     for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
     return 'hsl(' + (h % 360) + ', 78%, 70%)';
   }
+  /** Первая буква имени — для кружка-аватарки. */
+  function initialOf(name) {
+    const ch = Array.from(String(name || '').trim())[0] || '?';
+    return ch.toUpperCase();
+  }
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // Иконки — Material Design Icons (Apache License 2.0)
@@ -74,6 +80,14 @@
     close: '<path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>',
     reply: '<path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/>',
     refresh: '<path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>',
+    pip: '<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
+    emoji: '<path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>',
+    rewind: '<path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z"/>',
+    ffwd: '<path d="m4 18 8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>',
+    phone: '<path d="M17 1.01 7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>',
+    tablet: '<path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 1.99-.9 1.99-2L23 6c0-1.1-.9-2-2-2zm-2 14H5V6h14v12z"/>',
+    desktop: '<path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/>',
+    tv: '<path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/>',
   };
   const svgIcon = (name) => '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (ICONS[name] || '') + '</svg>';
   const setIcon = (node, name) => { if (node.dataset.cur !== name) { node.innerHTML = svgIcon(name); node.dataset.cur = name; } };
@@ -85,11 +99,40 @@
   const UA = navigator.userAgent;
   const IS_IOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const IS_IPHONE = /iP(hone|od)/.test(UA);
-  const COARSE = window.matchMedia('(pointer: coarse)').matches;
+  const IS_TV = /SmartTV|SMART-TV|Tizen|Web0S|webOS|NetCast|HbbTV|BRAVIA|Android TV|GoogleTV|AFT[A-Z]|CrKey/i.test(UA);
+  // Основной ввод — палец (телефон, планшет). Может смениться на ходу: например, у планшета отстегнули клавиатуру
+  const COARSE_MQ = window.matchMedia('(pointer: coarse)');
+  const COARSE = COARSE_MQ.matches;
   const VOLUME_OK = (() => {
     try { const v = document.createElement('video'); v.volume = 0.5; return v.volume === 0.5; } catch (e) { return false; }
   })();
+  // Низкое широкое окно на компьютере тоже считаем «телефоном боком»
   const PHONE_LANDSCAPE = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+  const WIDE = window.matchMedia('(min-width: 900px)'); // раскладка с чатом сбоку (как в style.css)
+  const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const onMedia = (mq, fn) => { if (mq.addEventListener) mq.addEventListener('change', fn); else if (mq.addListener) mq.addListener(fn); };
+
+  /** Телефон, а не планшет: короткая сторона экрана меньше 600 точек. */
+  function isPhone() {
+    return COARSE_MQ.matches && Math.min(screen.width, screen.height) < 600;
+  }
+  /** Ориентация самого экрана, а не окна: клавиатура на Android уменьшает окно, но не поворачивает телефон. */
+  function screenLandscape() {
+    const o = screen.orientation;
+    if (o && typeof o.type === 'string') return o.type.indexOf('landscape') === 0;
+    if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+    return window.innerWidth > window.innerHeight;
+  }
+  /** Телефон повёрнут боком — фильм сам разворачивается на весь экран. */
+  function phoneLandscape() {
+    return COARSE_MQ.matches ? isPhone() && screenLandscape() : PHONE_LANDSCAPE.matches;
+  }
+  /** Тип устройства — его видно в списке участников. */
+  function deviceKind() {
+    if (IS_TV) return 'tv';
+    if (!COARSE_MQ.matches) return 'desktop';
+    return isPhone() ? 'phone' : 'tablet';
+  }
 
   // Пороги синхронизации (секунды)
   const HARD_SYNC = 1.0;    // при смене состояния: дальше — перематываем
@@ -108,8 +151,10 @@
     'pickMovieBtn', 'pickFileBtn', 'pickSubsBtn', 'chat', 'chatClose', 'messages', 'reactBar', 'chatForm', 'chatInput',
     'replyBar', 'replyWho', 'replyText', 'replyCancel',
     'picker', 'pickerList', 'pickerFoot', 'pickerRefresh', 'pickerClose', 'fileInput', 'subsInput',
+    'skipBack', 'skipFwd', 'pipNote', 'pipBack', 'reactBtn', 'reactTray', 'pipBtn', 'peoplePop', 'peopleTitle', 'peopleList',
   ].forEach((id) => { E[id] = document.getElementById(id); });
   E.modeBtns = document.querySelectorAll('[data-mode]');
+  E.topbar = document.querySelector('.topbar');
 
   // ================================================================ состояние клиента
   const S = {
@@ -159,8 +204,15 @@
     win: null,
     lastCT: 0,
     pseudoFs: false,
-    chatOpen: null,
+    chatOpen: null,       // чат поверх фильма в полноэкранном режиме
+    chatHidden: store.get('tg_chat_hidden') === '1', // чат спрятан на широком экране
     replyTo: null,        // { id, from } — на какое сообщение сейчас отвечаем
+    pointer: COARSE ? 'touch' : 'mouse', // чем нажимали в последний раз: мышь, палец или перо
+    skipTarget: null,     // куда ведёт серия быстрых перемоток (стрелки, двойные касания)
+    skipTimer: 0,
+    skipSum: 0,           // сколько секунд набралось в серии — для подсказки на экране
+    skipDir: 0,
+    lastPosStateAt: 0,    // когда последний раз сообщали системе позицию фильма
     unread: 0,
     lastStatusKey: '',
     lastStatusAt: 0,
@@ -168,6 +220,10 @@
   };
   if (!/^[a-z0-9]{16}$/.test(S.uid)) { S.uid = rid(16); store.set('tg_uid', S.uid); }
   if (!/^[a-z0-9]{16}$/.test(S.cid)) { S.cid = rid(16); sess.set('tg_cid', S.cid); }
+
+  // Чем нажимают прямо сейчас: на ноутбуке с сенсорным экраном бывает и мышь, и палец
+  document.addEventListener('pointerdown', (e) => { S.pointer = e.pointerType || 'mouse'; }, true);
+  const touchInput = () => S.pointer !== 'mouse';
 
   // ================================================================ связь с сервером
   async function api(path, body) {
@@ -244,11 +300,15 @@
   function onState(st) {
     if (!st) return;
     if (S.rtt == null && st.serverNow) S.offset = st.serverNow - Date.now();
+    const wasPlaying = !!(S.room && S.room.playing);
     S.room = st;
     S.holdSyncUntil = 0;
     if (!st.playing) document.body.classList.remove('idle');
     applyRoom();
     renderAll();
+    if (st.playing && !wasPlaying) poke(); // фильм пошёл — панель скоро спрячется сама
+    updatePositionState();
+    updateWakeLock();
   }
 
   /** Подстройка часов: сколько миллисекунд прибавить к Date.now(), чтобы получить время сервера. */
@@ -312,7 +372,7 @@
       S.playPending = false;
       S.subsKey = null;
       if (want) video.src = want.url;
-      else video.removeAttribute('src');
+      else { leavePip(); video.removeAttribute('src'); }
       try { video.load(); } catch (e) { /* ignore */ }
       setMediaSessionTitle(want ? want.title : null);
     }
@@ -348,6 +408,7 @@
       t.label = s.label;
       t.srclang = langOf(s.label);
       t.src = s.src;
+      t.addEventListener('load', () => placeCues(true));
       video.appendChild(t);
     });
     if (S.preferSubs != null && S.preferSubs < list.length) S.subsIndex = S.preferSubs;
@@ -360,6 +421,7 @@
     const tt = video.textTracks;
     for (let i = 0; i < tt.length; i++) tt[i].mode = i === S.subsIndex ? 'showing' : 'disabled';
     E.ccBtn.classList.toggle('on', S.subsIndex >= 0);
+    placeCues(true);
   }
 
   function atEnd(t) {
@@ -431,6 +493,7 @@
       if (ok) S.primed = true;
       if (!(S.room && S.room.playing) && !video.paused) doPause();
       video.muted = wasMuted;
+      renderMute(); // событие volumechange может потеряться при смене источника — обновляем значок сами
       S.unlocking = false;
       applyRoom();
     };
@@ -444,15 +507,17 @@
     if (!r) return;
     ensureSource();
     if (!S.sourceKey || S.mediaError) return;
+    // Пока идёт своя серия перемоток, не возвращаем плеер к старой позиции комнаты
+    const skipping = S.skipTarget != null;
     if (r.playing) {
       if (video.readyState < 1) { if (video.paused) tryPlay(); return; }
       const target = expectedPos();
-      if (Math.abs(video.currentTime - target) > HARD_SYNC && !video.seeking) catchUpTo(target);
+      if (!skipping && Math.abs(video.currentTime - target) > HARD_SYNC && !video.seeking) catchUpTo(target);
       if (video.paused && !video.ended && !atEnd(target)) tryPlay();
     } else {
       if (!video.paused && !S.unlocking) doPause();
       setRate(1);
-      if (video.readyState >= 1 && Math.abs(video.currentTime - expectedPos()) > 0.1) seekTo(expectedPos());
+      if (!skipping && video.readyState >= 1 && Math.abs(video.currentTime - expectedPos()) > 0.1) seekTo(expectedPos());
     }
   }
 
@@ -487,7 +552,7 @@
       if (!video.ended && !S.needsGesture) {
         if (video.readyState < 1) tryPlay();
         else if (!atEnd(expectedPos())) {
-          if (Math.abs(video.currentTime - expectedPos()) > HARD_SYNC) catchUpTo(expectedPos());
+          if (S.skipTarget == null && Math.abs(video.currentTime - expectedPos()) > HARD_SYNC) catchUpTo(expectedPos());
           tryPlay();
         }
       }
@@ -557,6 +622,9 @@
         sendStatus(true);
       }
     }
+
+    // Полоса прогресса на экране блокировки и в уведомлении — изредка уточняем
+    if (now - S.lastPosStateAt > 10000) updatePositionState();
   }
 
   // ---------------------------------------------------------------- события видео
@@ -607,6 +675,8 @@
   });
   video.addEventListener('volumechange', renderMute);
   video.addEventListener('durationchange', renderSource);
+  // Позиция для экрана блокировки и системных медиа-кнопок — после каждого заметного события
+  ['loadedmetadata', 'play', 'pause', 'seeked'].forEach((ev) => video.addEventListener(ev, updatePositionState));
 
   // ---------------------------------------------------------------- жесты (нужны iPhone для звука)
   function onGesture(e) {
@@ -639,18 +709,75 @@
     }
   }
 
+  /** Перематывать можно не дальше, чем за полсекунды до конца. */
+  function clampSeek(t) {
+    const d = video.duration;
+    if (isFinite(d) && d > 0) t = Math.min(t, Math.max(0, d - 0.5));
+    return Math.max(0, t);
+  }
+
   function userSeek(t) {
     const r = S.room;
     if (!r || !S.sourceKey) return;
-    const d = video.duration;
-    if (isFinite(d) && d > 0) t = Math.min(t, Math.max(0, d - 0.5));
-    t = Math.max(0, t);
-    seekTo(t);
+    cancelSkip();
+    t = clampSeek(t);
+    if (Math.abs(video.currentTime - t) > 0.05) seekTo(t);
     S.holdSyncUntil = performance.now() + 2500;
     act('seek', { position: Math.round(t * 1000) / 1000 });
   }
 
-  function userSkip(delta) { userSeek((S.dragging ? S.dragTime : localPos()) + delta); }
+  /**
+   * Перемотка серией: стрелка с автоповтором, несколько двойных касаний, кнопки ±10 подряд.
+   * У себя видео прыгает сразу, а всем уходит одна итоговая перемотка, когда нажатия закончились.
+   */
+  function queueSeek(t) {
+    if (!S.room || !S.sourceKey) return;
+    t = clampSeek(t);
+    S.skipTarget = t;
+    seekTo(t);
+    S.holdSyncUntil = performance.now() + 3000;
+    clearTimeout(S.skipTimer);
+    S.skipTimer = setTimeout(commitSkip, 450);
+    updateTimeUI();
+  }
+
+  function commitSkip() {
+    const t = S.skipTarget;
+    S.skipTarget = null;
+    S.skipTimer = 0;
+    if (t == null || !S.room) return;
+    // Если фильм шёл, за время серии он успел проиграть ещё чуть-чуть — отправляем фактическую позицию
+    userSeek(S.room.playing && video.readyState >= 1 ? video.currentTime : t);
+  }
+
+  function cancelSkip() {
+    clearTimeout(S.skipTimer);
+    S.skipTimer = 0;
+    S.skipTarget = null;
+  }
+
+  function userSkip(delta) {
+    if (!S.room || !S.sourceKey) return;
+    const series = S.skipTarget != null;
+    const base = series ? S.skipTarget : (S.dragging ? S.dragTime : localPos());
+    // Для подсказки на экране: сколько секунд набралось за серию в одну сторону
+    const dir = Math.sign(delta);
+    S.skipSum = (series && dir === S.skipDir ? S.skipSum : 0) + Math.abs(delta);
+    S.skipDir = dir;
+    queueSeek(base + delta);
+    showSkip(dir, S.skipSum);
+  }
+
+  /** Полукруг у края кадра: «назад/вперёд на N секунд». */
+  function showSkip(dir, sum) {
+    const node = dir < 0 ? E.skipBack : E.skipFwd;
+    const other = dir < 0 ? E.skipFwd : E.skipBack;
+    other.classList.remove('show');
+    node.querySelector('b').textContent = Math.round(sum) + ' с';
+    node.classList.add('show');
+    clearTimeout(node.hideTimer);
+    node.hideTimer = setTimeout(() => node.classList.remove('show'), 650);
+  }
 
   // ================================================================ отрисовка
   function renderAll() {
@@ -661,6 +788,7 @@
     renderOverlay();
     renderPeople();
     renderFsBtn();
+    renderPip();
   }
 
   function renderMode() {
@@ -678,9 +806,13 @@
   }
 
   function renderFsBtn() {
-    const imm = document.body.classList.contains('immersive');
-    setIcon(E.fsBtn, imm ? 'fsExit' : 'fs');
-    E.fsBtn.hidden = IS_IPHONE && PHONE_LANDSCAPE.matches && !S.pseudoFs;
+    // Телефон боком — это ещё не полный экран: кнопка по-прежнему прячет панели браузера (Android)
+    const full = isNativeFs() || S.pseudoFs;
+    setIcon(E.fsBtn, full ? 'fsExit' : 'fs');
+    const label = full ? 'Выйти из полноэкранного режима' : 'Во весь экран';
+    E.fsBtn.title = label + ' (F)';
+    E.fsBtn.setAttribute('aria-label', label);
+    E.fsBtn.hidden = IS_IPHONE && phoneLandscape() && !S.pseudoFs;
   }
 
   function updateTimeUI() {
@@ -710,18 +842,105 @@
     return { cls: '', text: 'Всё готово' };
   }
 
+  /** Кружок с первой буквой имени. */
+  function avatar(p) {
+    const av = el('span', 'av', initialOf(p.name));
+    av.style.background = nameColor(p.name);
+    return av;
+  }
+
   function renderPeople() {
     E.people.textContent = '';
     for (const p of S.presence) {
       const st = peerState(p);
       const chip = el('span', 'chip' + (p.cid === S.cid ? ' me' : ''));
       chip.appendChild(el('span', 'dot ' + st.cls));
+      chip.appendChild(avatar(p));
       chip.appendChild(el('span', 'n', p.name));
       if (p.cid === S.cid) chip.appendChild(el('span', 'you', '(ты)'));
       chip.title = p.name + ': ' + st.text;
       E.people.appendChild(chip);
     }
+    E.people.setAttribute('aria-label', 'В комнате: ' + S.presence.length + '. Показать список');
+    fitPeople();
+    if (!E.peoplePop.hidden) renderPeopleList();
   }
+
+  /** Имена не помещаются в строку — показываем кружки с буквами, а лишних прячем за «+N». */
+  function fitPeople() {
+    const box = E.people;
+    const chips = Array.from(box.querySelectorAll('.chip'));
+    box.classList.remove('compact');
+    chips.forEach((c) => { c.hidden = false; });
+    const old = box.querySelector('.more');
+    if (old) old.remove();
+    const fits = () => box.scrollWidth <= box.clientWidth + 1;
+    if (!chips.length || !box.clientWidth || fits()) return;
+    box.classList.add('compact');
+    if (fits()) return;
+    const more = el('span', 'more');
+    box.appendChild(more);
+    // Прячем участников с конца, но себя оставляем на виду
+    let hidden = 0;
+    for (let i = chips.length - 1; i >= 0 && !fits(); i--) {
+      if (chips[i].classList.contains('me')) continue;
+      chips[i].hidden = true;
+      more.textContent = '+' + (++hidden);
+    }
+  }
+
+  const DEVICE_NAMES = { phone: 'телефон', tablet: 'планшет', desktop: 'компьютер', tv: 'телевизор' };
+
+  /** Список «Кто в комнате»: имя, статус и с какого устройства человек смотрит. */
+  function renderPeopleList() {
+    E.peopleTitle.textContent = 'В комнате: ' + S.presence.length;
+    E.peopleList.textContent = '';
+    for (const p of S.presence) {
+      const st = peerState(p);
+      const row = el('div', 'person');
+      const av = avatar(p);
+      av.appendChild(el('span', 'dot ' + st.cls));
+      row.appendChild(av);
+      const info = el('div', 'pi');
+      const name = el('div', 'pn', p.name);
+      if (p.cid === S.cid) name.appendChild(el('span', 'you', ' (ты)'));
+      info.appendChild(name);
+      info.appendChild(el('div', 'ps' + (st.cls === 'warn' ? ' warn' : ''), st.text));
+      row.appendChild(info);
+      const kind = DEVICE_NAMES[p.device] ? p.device : null;
+      if (kind) {
+        const dev = el('span', 'dev');
+        dev.innerHTML = svgIcon(kind);
+        dev.title = DEVICE_NAMES[kind];
+        row.appendChild(dev);
+      }
+      E.peopleList.appendChild(row);
+    }
+  }
+
+  function openPeople() {
+    renderPeopleList();
+    // Список выпадает прямо под верхней панелью, какой бы высоты она ни была
+    E.peoplePop.style.top = Math.round(E.topbar.getBoundingClientRect().bottom + 6) + 'px';
+    E.peoplePop.hidden = false;
+    E.people.setAttribute('aria-expanded', 'true');
+    pushLayer('people', hidePeople);
+  }
+  function hidePeople() {
+    E.peoplePop.hidden = true;
+    E.people.setAttribute('aria-expanded', 'false');
+  }
+  function closePeople() {
+    if (E.peoplePop.hidden) return;
+    hidePeople();
+    dropLayer('people');
+  }
+  E.people.addEventListener('click', () => { if (E.peoplePop.hidden) openPeople(); else closePeople(); });
+  // Нажатие мимо списка закрывает его
+  document.addEventListener('pointerdown', (e) => {
+    if (E.peoplePop.hidden || E.peoplePop.contains(e.target) || E.people.contains(e.target)) return;
+    closePeople();
+  }, true);
 
   function renderSource() {
     const r = S.room;
@@ -871,25 +1090,107 @@
     setTimeout(() => f.remove(), 2900);
   }
 
+  /** Кнопки реакций: в чате и в лотке на панели плеера (когда чат скрыт). */
   function buildReactBar() {
     E.reactBar.textContent = '';
+    E.reactTray.textContent = '';
     S.reactions.forEach((em) => {
-      const b = el('button', null, em);
-      b.type = 'button';
-      b.title = 'Отправить реакцию';
-      b.addEventListener('click', () => act('react', { emoji: em }));
-      E.reactBar.appendChild(b);
+      [E.reactBar, E.reactTray].forEach((box) => {
+        const b = el('button', null, em);
+        b.type = 'button';
+        b.title = 'Отправить реакцию';
+        b.setAttribute('aria-label', 'Реакция ' + em);
+        b.addEventListener('click', () => {
+          act('react', { emoji: em });
+          if (box === E.reactTray) bumpTray();
+        });
+        box.appendChild(b);
+      });
     });
   }
+
+  // ---------------------------------------------------------------- лоток реакций на панели плеера
+  function openTray() {
+    E.reactTray.hidden = false;
+    E.reactBtn.classList.add('on');
+    E.reactBtn.setAttribute('aria-expanded', 'true');
+    bumpTray();
+  }
+  function closeTray() {
+    clearTimeout(S.trayTimer);
+    if (E.reactTray.hidden) return;
+    E.reactTray.hidden = true;
+    E.reactBtn.classList.remove('on');
+    E.reactBtn.setAttribute('aria-expanded', 'false');
+    poke();
+  }
+  /** Лоток закрывается сам через несколько секунд после последнего нажатия. */
+  function bumpTray() {
+    clearTimeout(S.trayTimer);
+    S.trayTimer = setTimeout(closeTray, 4000);
+    poke();
+  }
+  E.reactBtn.addEventListener('click', () => { if (E.reactTray.hidden) openTray(); else closeTray(); });
 
   // ---------------------------------------------------------------- чат
   const msgEls = new Map();   // id → DOM-узел сообщения
   const msgData = new Map();  // id → само сообщение (нужно, чтобы на него ответить)
   const SWIPE_REPLY = 56;     // на столько пикселей сдвинуть сообщение влево, чтобы ответить
 
+  /** Виден ли сейчас чат: в полноэкранном режиме — если открыт, на широком экране — если не спрятан. */
   function chatVisible() {
     const b = document.body.classList;
-    return !b.contains('immersive') || b.contains('chat-open');
+    if (b.contains('immersive')) return b.contains('chat-open');
+    return !(S.chatHidden && WIDE.matches);
+  }
+
+  /** От видимости чата зависят кнопки на панели, всплывающие сообщения и счётчик непрочитанного. */
+  function renderChatState() {
+    const b = document.body.classList;
+    b.toggle('chat-hidden', S.chatHidden);
+    const visible = chatVisible();
+    b.toggle('chat-away', !visible);
+    E.chatBtn.classList.toggle('on', visible);
+    const label = visible ? 'Скрыть чат' : 'Показать чат';
+    E.chatBtn.title = label + ' (T)';
+    E.chatBtn.setAttribute('aria-label', label);
+    if (visible) {
+      clearUnread();
+      closeTray();
+    }
+  }
+
+  /** Показать чат, где бы он ни был спрятан. */
+  function showChat() {
+    const b = document.body.classList;
+    if (b.contains('immersive')) {
+      if (b.contains('chat-open')) return;
+      S.chatOpen = true;
+      // На телефоне и планшете чат поверх фильма закрывается кнопкой «Назад»
+      if (COARSE_MQ.matches) pushLayer('chat', () => { S.chatOpen = false; updateImmersive(); });
+      updateImmersive();
+    } else if (S.chatHidden && WIDE.matches) {
+      setChatHidden(false);
+    }
+  }
+
+  function setChatHidden(hidden) {
+    S.chatHidden = hidden;
+    store.set('tg_chat_hidden', hidden ? '1' : '0');
+    renderChatState();
+    placeCues(true);
+  }
+
+  /** Кнопка 💬 и клавиша T: спрятать или показать чат. */
+  function toggleChat() {
+    const b = document.body.classList;
+    if (b.contains('immersive')) {
+      if (b.contains('chat-open')) { S.chatOpen = false; updateImmersive(); return; }
+      showChat();
+      if (!touchInput()) E.chatInput.focus();
+      return;
+    }
+    if (WIDE.matches) setChatHidden(!S.chatHidden); // на узком экране чат всегда под видео
   }
 
   /** Текст в одну строку — для цитат. */
@@ -1035,7 +1336,7 @@
     const node = msgEls.get(id);
     if (!node || !node.isConnected) { flash('Этого сообщения уже нет в истории'); return; }
     const box = E.messages;
-    box.scrollTo({ top: node.offsetTop - (box.clientHeight - node.offsetHeight) / 2, behavior: 'smooth' });
+    box.scrollTo({ top: node.offsetTop - (box.clientHeight - node.offsetHeight) / 2, behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
     node.classList.add('hl');
     clearTimeout(node.hlTimer);
     node.hlTimer = setTimeout(() => node.classList.remove('hl'), 1400);
@@ -1044,10 +1345,8 @@
   // Свайп сообщения влево на сенсорном экране — ответить на него (как в Telegram)
   let swipe = null;       // текущий жест: { node, pid, x, y, dx, active }
   let swipeEndAt = 0;     // когда закончился свайп — чтобы следом не сработало касание
-  let lastPointer = 'mouse';
 
   E.messages.addEventListener('pointerdown', (e) => {
-    lastPointer = e.pointerType;
     if (e.pointerType === 'mouse') return;
     const node = e.target.closest('.msg');
     if (!node || e.target.closest('.rp')) return;
@@ -1066,7 +1365,12 @@
     }
     swipe.dx = Math.max(-SWIPE_REPLY * 1.4, Math.min(0, dx));
     swipe.node.style.transform = 'translateX(' + swipe.dx + 'px)';
-    swipe.node.classList.toggle('swipe-ok', swipe.dx <= -SWIPE_REPLY);
+    const ok = swipe.dx <= -SWIPE_REPLY;
+    // Лёгкий отклик вибрацией в момент, когда отпускание уже даст ответ (Android)
+    if (ok && !swipe.node.classList.contains('swipe-ok') && navigator.vibrate) {
+      try { navigator.vibrate(8); } catch (err) { /* ignore */ }
+    }
+    swipe.node.classList.toggle('swipe-ok', ok);
   });
 
   function endSwipe(e) {
@@ -1091,7 +1395,7 @@
     const q = t.closest('.quote');
     if (q) { jumpTo(q.dataset.jump); return; }
     // На сенсорном экране касание сообщения показывает у него кнопку «Ответить»
-    if (lastPointer !== 'mouse') {
+    if (touchInput()) {
       const node = t.closest('.msg');
       const was = !!node && node.classList.contains('sel');
       clearSelected();
@@ -1101,8 +1405,18 @@
 
   E.replyCancel.addEventListener('click', () => {
     cancelReply();
-    if (!COARSE) E.chatInput.focus();
+    if (!touchInput()) E.chatInput.focus();
   });
+
+  // Лента «прилипает» к последнему сообщению, когда меняется её высота (клавиатура, поворот, панель ответа)
+  let chatAtBottom = true;
+  E.messages.addEventListener('scroll', () => {
+    const box = E.messages;
+    chatAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+  }, { passive: true });
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { if (chatAtBottom) E.messages.scrollTop = E.messages.scrollHeight; }).observe(E.messages);
+  }
 
   E.chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1120,91 +1434,214 @@
   function isNativeFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
 
   function updateImmersive() {
-    const on = isNativeFs() || S.pseudoFs || PHONE_LANDSCAPE.matches;
+    const native = isNativeFs();
+    const on = native || S.pseudoFs || phoneLandscape();
     const body = document.body.classList;
     const was = body.contains('immersive');
     body.toggle('immersive', on);
+    body.toggle('native-fs', native);
     if (on && !was && S.chatOpen == null) S.chatOpen = window.innerWidth >= 1100;
     body.toggle('chat-open', on && !!S.chatOpen);
-    if (!on || S.chatOpen) clearUnread();
-    if (!on) body.remove('idle');
+    if (!on) E.stage.classList.remove('fill');
+    // Чат или псевдо-полный экран закрылись не через «Назад» — убираем и их запись в истории
+    if (!(on && S.chatOpen)) dropLayer('chat');
+    if (!S.pseudoFs) dropLayer('fs');
+    renderChatState();
     renderFsBtn();
-    poke();
+    if (on !== was) {
+      poke();
+      placeCues(true);
+      if (!on) requestAnimationFrame(fitPeople); // шапка снова видна — раскладываем участников по её ширине
+    }
+  }
+
+  function exitFullscreen() {
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    try {
+      const p = ex && ex.call(document);
+      return p && p.then ? p.catch(() => {}) : Promise.resolve();
+    } catch (e) { return Promise.resolve(); }
   }
 
   function toggleFullscreen() {
-    if (isNativeFs()) {
-      const ex = document.exitFullscreen || document.webkitExitFullscreen;
-      try { const p = ex && ex.call(document); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
-      return;
-    }
+    if (isNativeFs()) { exitFullscreen(); return; }
     if (S.pseudoFs) { S.pseudoFs = false; updateImmersive(); return; }
     const target = E.layout;
-    const req = target.requestFullscreen || target.webkitRequestFullscreen;
+    // iPhone не даёт развернуть на весь экран ничего, кроме голого видео, — растягиваем страницу сами
     const fallback = () => {
       S.pseudoFs = true;
+      pushLayer('fs', () => { S.pseudoFs = false; updateImmersive(); });
       updateImmersive();
-      if (IS_IPHONE && !PHONE_LANDSCAPE.matches) flash('Поверни телефон боком');
+      if (IS_IPHONE && !phoneLandscape()) flash('Поверни телефон боком');
     };
-    if (req && !IS_IPHONE) {
-      try {
-        const p = req.call(target);
-        if (p && p.catch) p.catch(fallback);
-      } catch (e) { fallback(); }
-    } else {
-      fallback();
+    if (IS_IPHONE || !(target.requestFullscreen || target.webkitRequestFullscreen)) { fallback(); return; }
+    let p;
+    try {
+      // navigationUI: 'hide' — на Android прячется и системная панель навигации
+      p = target.requestFullscreen ? target.requestFullscreen({ navigationUI: 'hide' }) : target.webkitRequestFullscreen();
+    } catch (e) { fallback(); return; }
+    if (p && p.then) p.then(lockLandscape, fallback);
+    else setTimeout(lockLandscape, 300);
+  }
+
+  /** Телефон в полноэкранном режиме сам поворачивает фильм боком (Android; iPhone так не умеет). */
+  function lockLandscape() {
+    const o = screen.orientation;
+    if (!isPhone() || !isNativeFs() || !o || typeof o.lock !== 'function') return;
+    if (video.videoWidth && video.videoHeight && video.videoHeight > video.videoWidth) return; // вертикальное видео
+    try { const p = o.lock('landscape'); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ }
+  }
+
+  function onFullscreenChange() {
+    if (!isNativeFs() && screen.orientation && typeof screen.orientation.unlock === 'function') {
+      try { screen.orientation.unlock(); } catch (e) { /* ignore */ }
     }
+    updateImmersive();
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  onMedia(PHONE_LANDSCAPE, updateImmersive);
+  // Поворот экрана: размеры окна меняются не мгновенно, поэтому проверяем чуть позже
+  const onRotate = () => setTimeout(updateImmersive, 60);
+  if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onRotate);
+  else window.addEventListener('orientationchange', onRotate);
+  // Изменился размер окна: раскладка, участники в шапке, положение субтитров
+  let resizeFrame = 0;
+  window.addEventListener('resize', () => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      updateImmersive();
+      fitPeople();
+      placeCues(true);
+    });
+  });
+  onMedia(WIDE, renderChatState);
+
+  // ---------------------------------------------------------------- панель управления прячется сама
+  /** Можно ли сейчас спрятать панель управления. */
+  function canIdle() {
+    if (!S.room || !S.room.playing || !S.sourceKey || S.mediaError || S.dragging) return false;
+    if (!E.picker.hidden || !E.reactTray.hidden || !E.peoplePop.hidden) return false;
+    const a = document.activeElement;
+    // На кнопке панели стоит фокус с клавиатуры — не прячем, иначе не видно, где он
+    if (a && E.controls.contains(a) && isFocusVisible(a)) return false;
+    return true;
+  }
+  function isFocusVisible(node) {
+    try { return node.matches(':focus-visible'); } catch (e) { return false; }
   }
 
-  document.addEventListener('fullscreenchange', updateImmersive);
-  document.addEventListener('webkitfullscreenchange', updateImmersive);
-  if (PHONE_LANDSCAPE.addEventListener) PHONE_LANDSCAPE.addEventListener('change', updateImmersive);
-  else if (PHONE_LANDSCAPE.addListener) PHONE_LANDSCAPE.addListener(updateImmersive);
-
-  // Панель управления прячется во время просмотра на весь экран
-  function poke() {
-    document.body.classList.remove('idle');
+  /** Показать панель и через пару секунд бездействия снова спрятать (если фильм идёт). */
+  function poke(delay) {
+    const b = document.body.classList;
+    if (b.contains('idle')) { b.remove('idle'); placeCues(); }
     clearTimeout(S.idleTimer);
-    S.idleTimer = setTimeout(() => {
-      const b = document.body.classList;
-      if (b.contains('immersive') && S.room && S.room.playing && !S.dragging &&
-          document.activeElement !== E.chatInput && E.picker.hidden) b.add('idle');
-    }, COARSE ? 3500 : 2500);
+    S.idleTimer = setTimeout(hideControls, typeof delay === 'number' ? delay : (touchInput() ? 3500 : 2500));
+  }
+  function hideControls() {
+    clearTimeout(S.idleTimer);
+    if (!canIdle()) return;
+    document.body.classList.add('idle');
+    placeCues();
   }
 
-  // ================================================================ элементы управления
+  // ================================================================ касания и щелчки по кадру
+  // Мышь: щелчок — пауза, двойной щелчок — полный экран.
+  // Палец: касание — показать или спрятать панель; двойное касание слева/справа — назад/вперёд на 10 с
+  // (каждое следующее касание той же стороны добавляет ещё 10 с); двойное касание в центре — пауза.
+  const TAP_GAP = 320;     // мс между касаниями, чтобы считать их двойным
+  const SERIES_GAP = 800;  // мс, пока продолжается серия перемотки касаниями
   let clickTimer = null;
+  let stagePointer = 'mouse';
+  let lastTap = null;      // { t, zone, idleBefore } — предыдущее касание
+  let tapSeries = null;    // { t, zone } — идущая серия перемотки
+
+  E.stage.addEventListener('pointerdown', (e) => { stagePointer = e.pointerType || 'mouse'; }, true);
+
   E.stage.addEventListener('click', (e) => {
     if (e.target !== video) return;
-    if (COARSE) {
-      const b = document.body.classList;
-      if (b.contains('idle')) poke();
-      else if (b.contains('immersive') && S.room && S.room.playing) { clearTimeout(S.idleTimer); b.add('idle'); }
-      else poke();
-      return;
-    }
+    if (stagePointer !== 'mouse') { onStageTap(e); return; }
     if (clickTimer) return;
     clickTimer = setTimeout(() => { clickTimer = null; userPlayPause(); }, 230);
   });
   E.stage.addEventListener('dblclick', (e) => {
-    if (e.target !== video || COARSE) return;
+    if (e.target !== video || stagePointer !== 'mouse') return;
     clearTimeout(clickTimer);
     clickTimer = null;
     toggleFullscreen();
   });
+
+  /** Левая треть кадра — -1, правая — 1, середина — 0 (по видимой части, без чата поверх фильма). */
+  function tapZone(e) {
+    const r = E.controls.getBoundingClientRect();
+    const x = (e.clientX - r.left) / (r.width || 1);
+    return x < 0.35 ? -1 : x > 0.65 ? 1 : 0;
+  }
+
+  function onStageTap(e) {
+    const now = performance.now();
+    const zone = tapZone(e);
+    const b = document.body.classList;
+    // Серия: каждое следующее касание той же стороны — ещё 10 секунд
+    if (tapSeries && zone !== 0 && zone === tapSeries.zone && now - tapSeries.t < SERIES_GAP) {
+      tapSeries.t = now;
+      userSkip(zone * 10);
+      return;
+    }
+    tapSeries = null;
+    if (lastTap && now - lastTap.t < TAP_GAP && zone === lastTap.zone) {
+      // Двойное касание: панель возвращаем в то состояние, что было до первого касания
+      if (lastTap.idleBefore) hideControls(); else poke();
+      lastTap = null;
+      if (zone === 0) { userPlayPause(); return; }
+      tapSeries = { t: now, zone };
+      userSkip(zone * 10);
+      return;
+    }
+    lastTap = { t: now, zone, idleBefore: b.contains('idle') };
+    if (b.contains('idle') || !canIdle()) poke(); else hideControls();
+  }
+
+  // Два пальца на кадре в полноэкранном режиме: развести — кадр заполняет экран (края обрежутся), свести — снова целиком
+  const pinch = { pts: new Map(), start: 0, done: false };
+  E.stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' || e.target !== video || !document.body.classList.contains('immersive')) return;
+    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.pts.size === 2) { pinch.start = pinchDist(); pinch.done = false; }
+  });
+  E.stage.addEventListener('pointermove', (e) => {
+    if (!pinch.pts.has(e.pointerId)) return;
+    pinch.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.pts.size !== 2 || pinch.done || !pinch.start) return;
+    const k = pinchDist() / pinch.start;
+    if (k > 1.2 || k < 0.83) { pinch.done = true; setFill(k > 1); }
+  });
+  const endPinch = (e) => { pinch.pts.delete(e.pointerId); if (pinch.pts.size < 2) pinch.start = 0; };
+  E.stage.addEventListener('pointerup', endPinch);
+  E.stage.addEventListener('pointercancel', endPinch);
+  function pinchDist() {
+    const [a, b] = Array.from(pinch.pts.values());
+    return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  }
+  function setFill(on) {
+    if (E.stage.classList.contains('fill') === on) return;
+    E.stage.classList.toggle('fill', on);
+    flash(on ? 'Кадр на весь экран' : 'Кадр целиком');
+  }
+
   E.stage.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') poke(); });
+  // Мышь ушла с кадра — панель прячется быстрее
+  E.stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') poke(800); });
   E.controls.addEventListener('pointerdown', poke);
 
+  // ================================================================ элементы управления
   E.playBtn.addEventListener('click', userPlayPause);
   E.backBtn.addEventListener('click', () => userSkip(-10));
   E.fwdBtn.addEventListener('click', () => userSkip(10));
   E.fsBtn.addEventListener('click', toggleFullscreen);
   E.ccBtn.addEventListener('click', toggleSubs);
-  E.chatBtn.addEventListener('click', () => {
-    S.chatOpen = !document.body.classList.contains('chat-open');
-    updateImmersive();
-    if (S.chatOpen && !COARSE) E.chatInput.focus();
-  });
+  E.chatBtn.addEventListener('click', toggleChat);
   E.chatClose.addEventListener('click', () => { S.chatOpen = false; updateImmersive(); });
   E.tapjoinBtn.addEventListener('click', () => renderOverlay());
   E.waitSkip.addEventListener('click', () => { if (S.room) act('play', { position: S.room.position }); });
@@ -1231,6 +1668,16 @@
   function toggleMute() {
     video.muted = !video.muted;
     if (!video.muted && video.volume === 0) { video.volume = 0.5; E.vol.value = '0.5'; }
+  }
+  /** Громкость стрелками ↑/↓. На iPhone и iPad её меняют только кнопки самого устройства. */
+  function changeVolume(delta) {
+    if (!VOLUME_OK) { flash('Громкость — кнопками на устройстве'); return; }
+    const v = clamp(Math.round((video.volume + delta) * 20) / 20, 0, 1);
+    video.volume = v;
+    video.muted = v === 0;
+    E.vol.value = String(v);
+    store.set('tg_vol', String(v));
+    flash('Громкость ' + Math.round(v * 100) + '%');
   }
 
   // Субтитры
@@ -1280,6 +1727,7 @@
     S.dragging = false;
     E.scrub.classList.remove('drag');
     userSeek(S.dragTime);
+    poke();
   });
   E.scrub.addEventListener('pointercancel', () => {
     S.dragging = false;
@@ -1288,7 +1736,7 @@
 
   // Горячие клавиши (e.code не зависит от раскладки)
   document.addEventListener('keydown', (e) => {
-    if (!S.room || E.app.hidden) return;
+    if (!S.room || E.app.hidden || e.defaultPrevented) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
       // Esc в поле чата: сначала отменяет ответ, повторное нажатие убирает фокус
@@ -1296,26 +1744,50 @@
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (!E.picker.hidden) { if (e.key === 'Escape') closePicker(); return; }
+    if (!E.picker.hidden) { pickerKey(e); return; }
+    if (e.key === 'Escape') {
+      if (!E.peoplePop.hidden) closePeople();
+      else if (!E.reactTray.hidden) closeTray();
+      else if (S.pseudoFs) toggleFullscreen();
+      return;
+    }
+    if (mediaKey(e)) return;
     if ((e.code === 'Space' || e.key === 'Enter') && t && t.tagName === 'BUTTON') return;
     switch (e.code) {
       case 'Space': case 'KeyK': e.preventDefault(); userPlayPause(); break;
       case 'ArrowLeft': case 'KeyJ': e.preventDefault(); userSkip(-10); break;
       case 'ArrowRight': case 'KeyL': e.preventDefault(); userSkip(10); break;
+      case 'ArrowUp': e.preventDefault(); changeVolume(0.1); break;
+      case 'ArrowDown': e.preventDefault(); changeVolume(-0.1); break;
       case 'KeyF': e.preventDefault(); toggleFullscreen(); break;
       case 'KeyM': toggleMute(); break;
       case 'KeyC': toggleSubs(); break;
+      case 'KeyP': e.preventDefault(); togglePip(); break;
+      case 'KeyT': toggleChat(); break;
       case 'Enter':
         e.preventDefault();
-        if (document.body.classList.contains('immersive') && !document.body.classList.contains('chat-open')) {
-          S.chatOpen = true;
-          updateImmersive();
-        }
+        showChat();
         E.chatInput.focus();
-        break;
-      default: break;
+        return;
+      default: return;
     }
+    poke(); // после нажатия панель ненадолго видна: видно время и полосу перемотки
   });
+
+  /** Медиаклавиши клавиатуры и пульта ТВ (если браузер не передал их системным медиа-кнопкам). */
+  function mediaKey(e) {
+    const playing = !!(S.room && S.room.playing);
+    switch (e.key) {
+      case 'MediaPlayPause': mediaOnce(userPlayPause); break;
+      case 'MediaPlay': if (!playing) mediaOnce(userPlayPause); break;
+      case 'MediaPause': case 'MediaStop': if (playing) mediaOnce(userPlayPause); break;
+      case 'MediaRewind': case 'MediaTrackPrevious': mediaOnce(() => userSkip(-10)); break;
+      case 'MediaFastForward': case 'MediaTrackNext': mediaOnce(() => userSkip(10)); break;
+      default: return false;
+    }
+    e.preventDefault();
+    return true;
+  }
 
   // ================================================================ свой файл (режим «Свой файл»)
   function pickFile() { E.fileInput.click(); }
@@ -1374,10 +1846,24 @@
   async function openPicker() {
     if (isNativeFs()) toggleFullscreen();
     if (S.pseudoFs) { S.pseudoFs = false; updateImmersive(); }
+    S.pickerFrom = document.activeElement;
     E.picker.hidden = false;
+    pushLayer('picker', hidePicker);
+    poke();
     await loadMovies();
   }
-  function closePicker() { E.picker.hidden = true; }
+  function hidePicker() {
+    E.picker.hidden = true;
+    // Возвращаем фокус туда, откуда открывали (важно при управлении с клавиатуры)
+    const from = S.pickerFrom;
+    S.pickerFrom = null;
+    if (from && from.isConnected && from.focus && !touchInput()) from.focus({ preventScroll: true });
+  }
+  function closePicker() {
+    if (E.picker.hidden) return;
+    hidePicker();
+    dropLayer('picker');
+  }
 
   async function loadMovies() {
     E.pickerList.textContent = '';
@@ -1399,15 +1885,20 @@
       return;
     }
     const cur = S.room && S.room.movie ? S.room.movie.id : null;
+    let focusRow = null;
     r.movies.forEach((m) => {
       const row = el('div', 'movie' + (m.id === cur ? ' current' : ''));
+      // Строку можно выбрать и с клавиатуры или пульта: стрелки ↑/↓ и Enter
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      if (m.id === cur || !focusRow) focusRow = row;
       const info = el('div', 'mi');
       info.appendChild(el('div', 'mt', m.name));
       const meta = el('div', 'mm');
       meta.appendChild(el('span', null, fmtSize(m.size)));
       meta.appendChild(el('span', 'tag', m.ext.toUpperCase()));
       if (m.subs.length) meta.appendChild(el('span', 'tag', 'субтитры: ' + m.subs.map((s) => s.label).join(', ')));
-      if (m.ext === 'mkv') meta.appendChild(el('span', 'tag warn', 'iPhone не откроет MKV'));
+      if (m.ext === 'mkv') meta.appendChild(el('span', 'tag warn', 'не откроется на iPhone, iPad и в Safari'));
       const slash = m.id.lastIndexOf('/');
       if (slash > 0) meta.appendChild(el('span', null, m.id.slice(0, slash)));
       info.appendChild(meta);
@@ -1418,17 +1909,37 @@
       dl.setAttribute('aria-label', 'Скачать');
       dl.innerHTML = svgIcon('download');
       dl.addEventListener('click', (e) => e.stopPropagation());
+      dl.addEventListener('keydown', (e) => e.stopPropagation());
       row.appendChild(info);
       row.appendChild(dl);
-      row.addEventListener('click', () => { act('setMovie', { id: m.id }); closePicker(); });
+      const choose = () => { act('setMovie', { id: m.id }); closePicker(); };
+      row.addEventListener('click', choose);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); }
+      });
       E.pickerList.appendChild(row);
     });
+    // С клавиатуры и пульта сразу можно листать список (на сенсорном экране фокус не нужен)
+    if (focusRow && !touchInput()) focusRow.focus({ preventScroll: false });
   }
+
+  /** Стрелки ↑/↓ в окне выбора фильма переходят между строками. */
+  function pickerKey(e) {
+    if (e.key === 'Escape') { closePicker(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const rows = Array.from(E.pickerList.querySelectorAll('.movie'));
+    if (!rows.length) return;
+    e.preventDefault();
+    const i = rows.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i < 0 ? 0 : Math.min(rows.length - 1, i + 1)) : (i < 0 ? rows.length - 1 : Math.max(0, i - 1));
+    rows[next].focus();
+  }
+
   E.pickerClose.addEventListener('click', closePicker);
   E.pickerRefresh.addEventListener('click', loadMovies);
   E.picker.addEventListener('click', (e) => { if (e.target === E.picker) closePicker(); });
 
-  // ================================================================ статус для собеседника
+  // ================================================================ статус для остальных участников
   function fileInfo() {
     const r = S.room;
     if (!r || !S.sourceKey) return null;
@@ -1444,7 +1955,8 @@
       file: fileInfo(),
       buffering: S.bufferingReported,
       needsTap: !!(S.needsGesture && S.room && S.room.playing),
-      mobile: COARSE,
+      mobile: COARSE_MQ.matches,
+      device: deviceKind(),
     };
     const key = JSON.stringify(st);
     const now = Date.now();
@@ -1454,18 +1966,242 @@
     act('status', { status: st });
   }
 
-  // ================================================================ экран блокировки / наушники
+  // ================================================================ экран блокировки, уведомление, медиакнопки
   function setMediaSessionTitle(title) {
     if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') return;
-    try { navigator.mediaSession.metadata = title ? new window.MediaMetadata({ title, artist: 'Together' }) : null; } catch (e) { /* ignore */ }
+    try {
+      navigator.mediaSession.metadata = title ? new window.MediaMetadata({
+        title,
+        artist: 'Together',
+        artwork: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      }) : null;
+    } catch (e) { /* ignore */ }
   }
+
+  /** Сообщает системе, где сейчас фильм: полоса прогресса на экране блокировки и в уведомлении Android. */
+  function updatePositionState() {
+    S.lastPosStateAt = performance.now();
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    try { ms.playbackState = S.room && S.sourceKey ? (S.room.playing ? 'playing' : 'paused') : 'none'; } catch (e) { /* ignore */ }
+    if (typeof ms.setPositionState !== 'function') return;
+    const d = video.duration;
+    try {
+      if (S.sourceKey && isFinite(d) && d > 0) {
+        ms.setPositionState({ duration: d, playbackRate: video.playbackRate || 1, position: clamp(video.currentTime, 0, d) });
+      } else {
+        ms.setPositionState();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Медиакнопка может прийти дважды: клавишей и через системные медиа-кнопки — второй раз пропускаем. */
+  function mediaOnce(fn) {
+    const now = performance.now();
+    if (now - (S.lastMediaAt || 0) < 350) return;
+    S.lastMediaAt = now;
+    fn();
+  }
+
   if ('mediaSession' in navigator) {
     const h = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) { /* ignore */ } };
-    h('play', () => { if (S.room && !S.room.playing) userPlayPause(); });
-    h('pause', () => { if (S.room && S.room.playing) userPlayPause(); });
-    h('seekbackward', () => userSkip(-10));
-    h('seekforward', () => userSkip(10));
+    h('play', () => mediaOnce(() => { if (S.room && !S.room.playing) userPlayPause(); }));
+    h('pause', () => mediaOnce(() => { if (S.room && S.room.playing) userPlayPause(); }));
+    h('stop', () => mediaOnce(() => { if (S.room && S.room.playing) userPlayPause(); }));
+    h('seekbackward', (d) => mediaOnce(() => userSkip(-((d && d.seekOffset) || 10))));
+    h('seekforward', (d) => mediaOnce(() => userSkip((d && d.seekOffset) || 10)));
+    // Перетаскивание полосы на экране блокировки: всем уходит только итоговая позиция
+    h('seekto', (d) => { if (d && isFinite(d.seekTime)) queueSeek(d.seekTime); });
   }
+
+  // ================================================================ картинка в картинке
+  // Фильм в маленьком окне поверх других программ: можно ответить в мессенджере и не ставить паузу всем.
+  const PIP_STD = !!(document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function');
+  const PIP_WEBKIT = !PIP_STD && typeof video.webkitSupportsPresentationMode === 'function' &&
+    typeof video.webkitSetPresentationMode === 'function' && video.webkitSupportsPresentationMode('picture-in-picture');
+
+  function inPip() {
+    if (PIP_STD) return document.pictureInPictureElement === video;
+    return PIP_WEBKIT && video.webkitPresentationMode === 'picture-in-picture';
+  }
+
+  function renderPip() {
+    const on = inPip();
+    E.pipBtn.hidden = !(PIP_STD || PIP_WEBKIT) || !S.sourceKey || !!S.mediaError;
+    E.pipBtn.classList.toggle('on', on);
+    E.pipNote.hidden = !on;
+  }
+
+  async function togglePip() {
+    if (!(PIP_STD || PIP_WEBKIT)) { flash('Этот браузер не умеет «картинку в картинке»'); return; }
+    if (!S.sourceKey || video.readyState < 1) { flash('Сначала выбери фильм'); return; }
+    try {
+      if (inPip()) {
+        if (PIP_STD) await document.exitPictureInPicture();
+        else video.webkitSetPresentationMode('inline');
+        return;
+      }
+      // Из полноэкранного режима выходим, иначе на месте фильма останется чёрный экран
+      if (isNativeFs()) await exitFullscreen();
+      if (S.pseudoFs) { S.pseudoFs = false; updateImmersive(); }
+      if (PIP_STD) await video.requestPictureInPicture();
+      else video.webkitSetPresentationMode('picture-in-picture');
+    } catch (e) {
+      flash('Не получилось открыть отдельное окно');
+    }
+  }
+
+  function leavePip() {
+    try {
+      if (PIP_STD && document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+      else if (PIP_WEBKIT && inPip()) video.webkitSetPresentationMode('inline');
+    } catch (e) { /* ignore */ }
+  }
+
+  video.addEventListener('enterpictureinpicture', renderPip);
+  video.addEventListener('leavepictureinpicture', renderPip);
+  video.addEventListener('webkitpresentationmodechanged', renderPip);
+  E.pipBtn.addEventListener('click', togglePip);
+  E.pipBack.addEventListener('click', togglePip);
+
+  // ================================================================ кнопка «Назад» (Android, жест на iPhone, кнопка мыши)
+  // Открытое окно, список участников или чат поверх фильма закрываются «Назадом», а не уводят со страницы.
+  const layers = [];   // открытые слои по порядку: { name, close }
+  let expectPop = 0;   // сколько событий popstate вызвали мы сами
+  let backPending = 0; // сколько записей истории убрать одним шагом
+
+  function pushLayer(name, close) {
+    if (layers.some((l) => l.name === name)) return;
+    // Без нажатия пользователя запись в историю не добавляем: Chrome такие записи пропускает
+    if (navigator.userActivation && !navigator.userActivation.isActive) return;
+    layers.push({ name, close });
+    try { history.pushState({ tgLayer: true }, ''); } catch (e) { layers.pop(); }
+  }
+
+  /** Слой закрыли кнопкой на экране — убираем и его запись из истории. */
+  function dropLayer(name) {
+    const i = layers.findIndex((l) => l.name === name);
+    if (i === -1) return;
+    layers.splice(i, 1);
+    if (!backPending) {
+      setTimeout(() => {
+        const n = backPending;
+        backPending = 0;
+        if (n) { expectPop++; history.go(-n); }
+      }, 0);
+    }
+    backPending++;
+  }
+
+  window.addEventListener('popstate', () => {
+    if (expectPop) { expectPop--; return; }
+    const top = layers.pop();
+    if (top) top.close();
+  });
+
+  // ================================================================ экранная клавиатура
+  // Пока пишешь сообщение на телефоне или планшете, страница сжимается до видимой части над клавиатурой:
+  // фильм остаётся на виду, а поле ввода — прямо над клавиатурой (iPhone сам так не делает).
+  const VV = window.visualViewport;
+  let kbBase = { land: null, h: 0 }; // высота без клавиатуры для текущей ориентации экрана
+
+  function updateKeyboard() {
+    if (!VV) return;
+    const land = screenLandscape();
+    if (kbBase.land !== land) kbBase = { land, h: 0 };
+    const h = VV.height;
+    kbBase.h = Math.max(kbBase.h, h);
+    const open = COARSE_MQ.matches && document.activeElement === E.chatInput && VV.scale < 1.05 && h < kbBase.h - 80;
+    const b = document.body.classList;
+    if (open) {
+      const root = document.documentElement.style;
+      root.setProperty('--vvh', Math.round(h) + 'px');
+      root.setProperty('--vvt', Math.round(VV.offsetTop) + 'px');
+    }
+    if (b.contains('kb-open') !== open) {
+      b.toggle('kb-open', open);
+      if (!open) window.scrollTo(0, 0); // iPhone иногда оставляет страницу сдвинутой после клавиатуры
+    }
+  }
+  if (VV) {
+    VV.addEventListener('resize', updateKeyboard);
+    VV.addEventListener('scroll', updateKeyboard);
+  }
+  E.chatInput.addEventListener('focus', updateKeyboard);
+  E.chatInput.addEventListener('blur', () => setTimeout(updateKeyboard, 0));
+
+  // ================================================================ экран не гаснет во время фильма
+  // Браузер разрешает это только по HTTPS и на localhost (у хозяина), в остальных случаях экран держит само видео.
+  let wakeLock = null;
+  let wakePending = false;
+  const wantWake = () => !document.hidden && !!S.room && !!S.sourceKey && (S.room.playing || S.room.autoPaused);
+
+  function updateWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    if (wantWake()) {
+      if (wakeLock || wakePending) return;
+      wakePending = true;
+      navigator.wakeLock.request('screen').then((lock) => {
+        wakePending = false;
+        wakeLock = lock;
+        lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+        if (!wantWake()) updateWakeLock();
+      }, () => { wakePending = false; });
+    } else if (wakeLock) {
+      const lock = wakeLock;
+      wakeLock = null;
+      lock.release().catch(() => {});
+    }
+  }
+
+  // ================================================================ субтитры не прячутся под панелью
+  let cueLine = 'auto';
+
+  /** Пока панель управления видна, строки субтитров приподнимаются над ней. */
+  function placeCues(force) {
+    const tt = video.textTracks;
+    if (!tt || !tt.length) return;
+    let want = 'auto';
+    if (!document.body.classList.contains('idle') && S.sourceKey) {
+      const stage = E.stage.getBoundingClientRect();
+      const ctl = stage.bottom - E.scrub.getBoundingClientRect().top; // высота нижней части панели
+      const lineH = stage.height * 0.06;                               // строка субтитров ≈ 6% высоты кадра
+      if (lineH > 0 && ctl > 0) {
+        const n = Math.ceil(ctl / lineH) + 1;
+        if (n <= 6) want = -n; // на совсем маленьком кадре не поднимаем — некуда
+      }
+    }
+    if (want === cueLine && !force) return;
+    cueLine = want;
+    for (let i = 0; i < tt.length; i++) {
+      const track = tt[i];
+      const cues = track.mode === 'showing' ? track.cues : null;
+      if (!cues) continue;
+      let moved = false;
+      for (let j = 0; j < cues.length; j++) {
+        const c = cues[j];
+        if (c.tgAuto == null) c.tgAuto = c.line === 'auto'; // положение, заданное в самом файле, не трогаем
+        if (c.tgAuto && c.line !== want) { c.line = want; moved = true; }
+      }
+      // Строку, которая уже на экране, браузер сам не перерисует — переставляем её заново
+      if (moved && track.activeCues) {
+        Array.from(track.activeCues).forEach((c) => {
+          if (!c.tgAuto) return;
+          try { track.removeCue(c); track.addCue(c); } catch (e) { /* ignore */ }
+        });
+      }
+    }
+  }
+
+  // ================================================================ сенсорный экран или мышь
+  function applyInputMode() {
+    document.body.classList.toggle('touch-ui', COARSE_MQ.matches);
+    placeCues(true);
+  }
+  onMedia(COARSE_MQ, () => { applyInputMode(); updateImmersive(); sendStatus(true); });
 
   // ================================================================ вход
   function setToken(t) {
@@ -1477,7 +2213,7 @@
   function showLogin(errText) {
     E.app.hidden = true;
     E.login.hidden = false;
-    document.body.classList.remove('in-app', 'immersive', 'chat-open', 'idle');
+    document.body.classList.remove('in-app', 'immersive', 'native-fs', 'chat-open', 'chat-away', 'idle', 'kb-open');
     E.passLabel.hidden = !!S.authed;
     E.nameInput.value = S.name || '';
     const msg = errText || S.loginErrorText;
@@ -1495,6 +2231,9 @@
     S.room = null;
     if (S.es) { S.es.close(); S.es = null; }
     try { video.pause(); } catch (e) { /* ignore */ }
+    layers.length = 0;
+    hidePicker();
+    hidePeople();
     showLogin('Нужно войти заново (возможно, поменялся пароль комнаты)');
   }
 
@@ -1502,7 +2241,7 @@
     e.preventDefault();
     const showErr = (t) => { E.loginError.textContent = t; E.loginError.hidden = false; };
     const name = E.nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 24);
-    if (!name) { showErr('Напиши имя — его увидит собеседник'); E.nameInput.focus(); return; }
+    if (!name) { showErr('Напиши имя — его увидят остальные'); E.nameInput.focus(); return; }
     if (!S.authed) {
       const pass = E.passInput.value.trim();
       if (!pass) { showErr('Введи пароль комнаты'); E.passInput.focus(); return; }
@@ -1531,6 +2270,7 @@
     restoreVolume();
     renderPlayBtn();
     updateImmersive();
+    renderChatState();
     syncClock();
     setInterval(syncClock, 60000);
     setInterval(tick, 250);
@@ -1538,6 +2278,7 @@
   }
 
   document.addEventListener('visibilitychange', () => {
+    updateWakeLock();
     if (document.hidden || !S.started || !S.authed) return;
     syncClock();
     if (!S.es || S.es.readyState === 2) connect();
@@ -1547,6 +2288,7 @@
 
   async function boot() {
     fillIcons(document);
+    applyInputMode();
     renderMute();
     const params = new URLSearchParams(location.search);
     const k = params.get('k');

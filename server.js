@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -36,6 +36,7 @@ const STATIC_TYPES = {
   '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 const REACTIONS = ['😂', '😱', '❤️', '🔥', '👍', '😭'];
+const DEVICE_KINDS = new Set(['phone', 'tablet', 'desktop', 'tv']); // с чего смотрит участник (для списка «Кто в комнате»)
 const MAX_CHAT = 300;
 const REPLY_QUOTE_MAX = 160;      // сколько символов исходного сообщения хранится в цитате ответа
 const LEAVE_GRACE_MS = 8000;      // сколько ждём переподключения, прежде чем считать, что человек ушёл
@@ -510,7 +511,13 @@ function handleAction(client, body) {
         size: num(s.file.size, 1e15),
         duration: num(s.file.duration),
       } : null;
-      const next = { file: f, buffering: !!s.buffering, needsTap: !!s.needsTap, mobile: !!s.mobile };
+      const next = {
+        file: f,
+        buffering: !!s.buffering,
+        needsTap: !!s.needsTap,
+        mobile: !!s.mobile,
+        device: DEVICE_KINDS.has(s.device) ? s.device : null,
+      };
       const changed = JSON.stringify(next) !== JSON.stringify(client.status);
       client.status = next;
       if (changed) broadcastPresence();
@@ -550,7 +557,7 @@ function handleEvents(req, res, url) {
 
   const client = {
     cid, uid, name, res,
-    status: prev ? prev.status : { file: null, buffering: false, needsTap: false, mobile: false },
+    status: prev ? prev.status : { file: null, buffering: false, needsTap: false, mobile: false, device: null },
     lastSeen: Date.now(),
     ip: req.socket.remoteAddress,
   };
@@ -829,12 +836,26 @@ server.listen(PORT, () => {
   L.push('');
   console.log(L.join('\n'));
 
-  if (process.platform === 'win32' && cfg.openBrowser !== false && !process.env.TOGETHER_NO_BROWSER) {
+  if (cfg.openBrowser !== false && !process.env.TOGETHER_NO_BROWSER) {
     // Открываем сайт у себя сразу с паролем (только если в пароле нет символов, опасных для командной строки)
     const q = /^[\w-]+$/.test(String(cfg.password)) ? `/?k=${key}` : '/';
-    exec(`start "" "http://localhost:${PORT}${q}"`, () => {});
+    openInBrowser(`http://localhost:${PORT}${q}`);
   }
 });
+
+/** Открыть сайт в браузере на этом компьютере: Windows, macOS или Linux с рабочим столом. */
+function openInBrowser(url) {
+  try {
+    if (process.platform === 'win32') {
+      exec(`start "" "${url}"`, () => {});
+    } else if (process.platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    } else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+      // Без рабочего стола (например, сервер по SSH) браузер не открываем
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    }
+  } catch { /* не критично: сайт можно открыть вручную */ }
+}
 
 function shutdown() {
   saveNow();

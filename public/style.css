@@ -19,11 +19,16 @@
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  /* Видимая область над экранной клавиатурой (задаётся из app.js) */
+  --vvh: 100vh;
+  --vvt: 0px;
   color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* Двойное касание не увеличивает страницу (iOS): двойные касания по видео обрабатывает плеер */
+html { touch-action: manipulation; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -38,6 +43,10 @@ label { -webkit-tap-highlight-color: transparent; }
 svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 [data-icon] > svg, .ic > svg { pointer-events: none; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; opacity: 0; }
+
+/* Рамка фокуса видна только при управлении с клавиатуры или пульта ТВ (мышью и пальцем — нет) */
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.field:focus-visible { outline: none; }
 
 /* ---------- поля и кнопки ---------- */
 .field {
@@ -93,6 +102,8 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
   align-items: center;
   justify-content: center;
   padding: 24px 18px;
+  padding-top: calc(24px + var(--sat));
+  padding-bottom: calc(24px + var(--sab));
   background:
     radial-gradient(900px 520px at 12% 8%, rgba(255, 107, 61, .16), transparent 60%),
     radial-gradient(700px 520px at 92% 92%, rgba(255, 181, 71, .10), transparent 60%),
@@ -130,7 +141,7 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 750; font-size: 16px; letter-spacing: -.01em; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 750; font-size: 16px; letter-spacing: -.01em; flex: none; }
 .brand-mark { position: relative; width: 26px; height: 18px; flex: none; }
 .brand-mark::before, .brand-mark::after { content: ""; position: absolute; top: 0; width: 18px; height: 18px; border-radius: 50%; }
 .brand-mark::before { left: 0; background: var(--accent); }
@@ -140,12 +151,24 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .seg button { padding: 6px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); transition: background .15s, color .15s; white-space: nowrap; }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--accent); color: #fff; }
+.seg .ls { display: none; }
 
-.people { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; min-width: 0; }
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; max-width: 190px; }
+/* Участники: в одну строку; не помещаются имена — показываем кружки с буквами (класс compact) */
+.people { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; flex: 0 1 auto; overflow: hidden; padding: 3px; border-radius: 999px; }
+.chip { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; max-width: 190px; flex: none; transition: border-color .15s; }
 .chip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chip .you { color: var(--muted); }
 .chip.me { border-color: rgba(255, 107, 61, .45); }
+.chip .av { display: none; }
+.people:hover .chip:not(.me) { border-color: #353a48; }
+.people.compact { gap: 5px; padding: 4px; }
+.people.compact .chip { padding: 0; border: 0; background: none; gap: 0; }
+.people.compact .chip .n, .people.compact .chip .you { display: none; }
+.people.compact .chip .dot { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border: 2px solid var(--panel); }
+.people.compact .chip.me .av { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--accent); }
+.av { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; font-size: 13px; font-weight: 750; line-height: 1; color: #14161c; }
+.people.compact .chip .av { display: grid; }
+.more { flex: none; display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 7px; border-radius: 999px; background: var(--panel-3); font-size: 12px; font-weight: 700; color: var(--muted); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
 .dot.warn { background: var(--warn); }
 .dot.off { background: #5b6070; }
@@ -153,12 +176,41 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .conn.bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(255, 92, 92, .18); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 
+/* Список участников со статусами */
+.pop {
+  position: fixed; top: 56px; right: calc(10px + var(--sar));
+  z-index: 90;
+  width: min(320px, calc(100vw - 20px));
+  max-height: min(70vh, 480px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  overscroll-behavior: contain;
+  animation: popIn .16s ease-out;
+}
+.pop-title { padding: 6px 10px 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.person { display: flex; align-items: center; gap: 11px; padding: 7px 10px; border-radius: 10px; }
+.person .av { position: relative; width: 34px; height: 34px; font-size: 15px; }
+.person .av .dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border: 2px solid var(--panel); }
+.person .pi { flex: 1; min-width: 0; }
+.person .pn { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person .pn .you { color: var(--muted); font-weight: 400; }
+.person .ps { font-size: 12.5px; color: var(--muted); }
+.person .ps.warn { color: var(--warn); }
+.person .dev { flex: none; width: 18px; height: 18px; color: var(--muted); }
+@keyframes popIn { from { opacity: 0; transform: translateY(-6px); } }
+
 .layout { flex: 1; min-height: 0; display: flex; }
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* ---------- сцена с видео ---------- */
-.stage { position: relative; flex: 1; min-height: 0; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+/* container-type: размеры кнопок в центре кадра подстраиваются под высоту самой сцены */
+.stage { position: relative; flex: 1; min-height: 0; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; container: stage / size; }
 .stage video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.stage.fill video { object-fit: cover; } /* «развести пальцами» — видео на весь экран с обрезкой краёв */
 video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 
 .empty {
@@ -174,6 +226,18 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .empty h2 { margin: 0; color: var(--text); font-size: 21px; letter-spacing: -.01em; }
 .empty p { margin: 0 0 6px; max-width: 440px; font-size: 14px; }
 .empty-icon { display: block; width: 44px; height: 44px; color: var(--accent); }
+
+.pip-note {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 3;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px;
+  padding: 16px 16px 70px;
+  text-align: center;
+  background: #08090c;
+}
+.pip-note p { margin: 0; font-weight: 650; }
+.pip-note .empty-icon { width: 38px; height: 38px; }
 
 .pill {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
@@ -205,16 +269,34 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 
 .flash {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 6;
+  z-index: 8;
+  max-width: calc(100% - 24px);
   padding: 10px 16px;
   border-radius: 12px;
   background: rgba(0, 0, 0, .78);
   font-weight: 600;
+  text-align: center;
   pointer-events: none;
-  white-space: nowrap;
   animation: fadeOut 1.8s forwards;
 }
 @keyframes fadeOut { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Подсказка двойного касания: полукруг у края кадра со стрелками и числом секунд */
+.skip-ind {
+  position: absolute; top: 0; bottom: 0;
+  z-index: 6;
+  width: 38%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: #fff; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+}
+.skip-ind.left { left: 0; background: radial-gradient(ellipse 100% 78% at 0 50%, rgba(255, 255, 255, .16) 98%, transparent 100%); }
+.skip-ind.right { right: 0; background: radial-gradient(ellipse 100% 78% at 100% 50%, rgba(255, 255, 255, .16) 98%, transparent 100%); }
+.skip-ind.show { opacity: 1; transition: none; }
+.skip-ind [data-icon] { width: 32px; height: 32px; }
 
 .react-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .floater {
@@ -251,9 +333,12 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
   padding-left: calc(12px + var(--sal));
   padding-right: calc(12px + var(--sar));
   background: linear-gradient(to top, rgba(0, 0, 0, .85), rgba(0, 0, 0, .45) 55%, transparent);
-  transition: opacity .25s, right .25s;
+  pointer-events: none; /* пустые места панели пропускают клики и касания к видео */
+  transition: opacity .25s, visibility 0s, right .25s;
 }
+.controls .scrub, .controls .row, .controls button, .controls input, .react-tray { pointer-events: auto; }
 .row { display: flex; align-items: center; gap: 2px; }
+.cluster { display: flex; align-items: center; gap: 2px; flex: none; }
 .ib { position: relative; width: 40px; height: 40px; padding: 8px; border-radius: 10px; color: #fff; flex: none; transition: background .15s, color .15s; }
 .ib:hover { background: rgba(255, 255, 255, .12); }
 .ib.small { width: 34px; height: 34px; padding: 7px; color: var(--text); }
@@ -261,8 +346,13 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .time { margin-left: 6px; font-size: 13px; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .92); white-space: nowrap; }
 .spacer { flex: 1; }
 .vol { width: 88px; margin: 0 6px 0 0; accent-color: var(--accent); }
-.chat-btn { display: none; }
+.chat-btn, .react-btn { display: none; }
+.chat-away .react-btn { display: block; } /* чат скрыт — реакции под рукой прямо на панели */
 .badge-dot { position: absolute; top: 3px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; }
+
+/* Во время просмотра панель прячется, если её не трогать */
+.idle .controls { opacity: 0; visibility: hidden; transition: opacity .25s, visibility 0s linear .25s, right .25s; }
+.idle .stage { cursor: none; }
 
 .scrub { position: relative; height: 22px; margin: 0 6px 2px; cursor: pointer; touch-action: none; }
 .track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 4px; background: rgba(255, 255, 255, .22); overflow: hidden; transition: height .15s, margin .15s; }
@@ -273,7 +363,26 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .scrub:hover .knob, .scrub.drag .knob { transform: scale(1.1); }
 .tip { position: absolute; bottom: 22px; left: 0; transform: translateX(-50%); display: none; padding: 3px 7px; border-radius: 6px; background: rgba(0, 0, 0, .86); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
 .scrub.drag .tip, .scrub.hovering .tip { display: block; }
-.no-source .controls { opacity: .35; pointer-events: none; }
+
+/* Фильм не выбран: кнопки воспроизведения прячутся, а чат, реакции и полный экран работают */
+.no-source .scrub, .no-source .cluster, .no-source .time, .no-source #muteBtn, .no-source .vol, .no-source #ccBtn, .no-source #pipBtn { visibility: hidden; }
+
+/* Быстрые реакции над панелью */
+.react-tray {
+  position: absolute; right: calc(12px + var(--sar)); bottom: 74px;
+  z-index: 2;
+  display: flex; gap: 2px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(14, 15, 20, .86);
+  border: 1px solid rgba(255, 255, 255, .1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: popIn .15s ease-out;
+}
+.react-tray button { font-size: 24px; line-height: 1; padding: 7px; border-radius: 50%; transition: transform .1s, background .15s; }
+.react-tray button:hover { background: rgba(255, 255, 255, .12); }
+.react-tray button:active { transform: scale(1.3); }
 
 /* ---------- строка с источником видео ---------- */
 .sourcebar {
@@ -281,6 +390,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
   display: flex; align-items: center; gap: 12px;
   padding: 10px 16px;
   padding-left: calc(16px + var(--sal));
+  padding-right: calc(16px + var(--sar));
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
@@ -293,7 +403,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .src-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---------- чат ---------- */
-.chat { width: var(--chat-w); flex: none; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); }
+.chat { width: var(--chat-w); flex: none; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); padding-right: var(--sar); }
 .chat-head { display: none; }
 .messages { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 14px 12px 6px; display: flex; flex-direction: column; gap: 6px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .msg { align-self: flex-start; max-width: 86%; padding: 6px 11px 6px; border-radius: 14px 14px 14px 5px; background: var(--panel-2); overflow-wrap: anywhere; white-space: pre-wrap; animation: msgIn .18s ease-out; }
@@ -308,7 +418,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .msg.me .rp { right: auto; left: -30px; }
 .msg .rp:hover { color: var(--text); }
 .msg .rp > svg { pointer-events: none; }
-.msg.sel .rp { opacity: 1; pointer-events: auto; }
+.msg.sel .rp, .msg:focus-within .rp { opacity: 1; pointer-events: auto; }
 .msg.sel { box-shadow: 0 0 0 1px rgba(255, 255, 255, .14); }
 .msg.hl { box-shadow: 0 0 0 2px var(--accent-2); }
 .msg.swiping .rp { opacity: .45; }
@@ -342,11 +452,12 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, .62); }
 .sheet { width: min(620px, 100%); max-height: min(82vh, 760px); display: flex; flex-direction: column; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px rgba(0, 0, 0, .55); }
 .sheet header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 10px 10px 18px; border-bottom: 1px solid var(--line); }
-.sheet h3 { margin: 0; font-size: 16px; }
-.sheet header > div { display: flex; gap: 2px; }
-.movie-list { flex: 1; min-height: 110px; overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
+.sheet h3 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet header > div { display: flex; gap: 2px; flex: none; }
+.movie-list { flex: 1; min-height: 110px; overflow-y: auto; padding: 8px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .movie { display: flex; align-items: center; gap: 10px; padding: 9px 8px 9px 12px; border-radius: 12px; cursor: pointer; transition: background .15s; }
-.movie:hover { background: var(--panel-2); }
+.movie:hover, .movie:focus-visible { background: var(--panel-2); }
+.movie:focus-visible { outline-offset: -2px; }
 .movie.current { background: var(--accent-soft); }
 .movie .mi { flex: 1; min-width: 0; }
 .movie .mt { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -383,8 +494,69 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .immersive.chat-open .controls { right: min(var(--chat-w), 46vw); }
 .immersive.chat-open .toasts { display: none; }
 .immersive .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 0 14px; font-weight: 700; }
-.immersive.idle .controls { opacity: 0; pointer-events: none; }
-.immersive.idle .stage { cursor: none; }
+/* Вырез экрана и полоска «домой» на телефонах без рамок */
+.immersive .controls { padding-bottom: calc(8px + var(--sab)); }
+.immersive .pill { top: calc(14px + var(--sat)); }
+.immersive .offline { top: calc(58px + var(--sat)); }
+.immersive .toasts { bottom: calc(100px + var(--sab)); }
+.immersive .react-tray { bottom: calc(74px + var(--sab)); }
+
+/* ---------- сенсорные экраны: кнопки крупнее, пауза и ±10 с — в центре кадра ---------- */
+.touch-ui .controls {
+  top: 0;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 0 8px 4px;
+  padding-left: calc(8px + var(--sal));
+  padding-right: calc(8px + var(--sar));
+  background: linear-gradient(to top, rgba(0, 0, 0, .74), rgba(0, 0, 0, .3) 45%, rgba(0, 0, 0, .3));
+}
+.touch-ui.immersive .controls { padding-bottom: calc(6px + var(--sab)); }
+/* Касание мимо кнопок — это касание по кадру: показать или спрятать панель */
+.touch-ui .controls .row { pointer-events: none; }
+.touch-ui .no-source .controls { background: none; }
+.touch-ui .cluster {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -60%);
+  gap: 26px;
+}
+.touch-ui .cluster .ib { width: 46px; height: 46px; padding: 9px; border-radius: 50%; background: rgba(0, 0, 0, .34); }
+.touch-ui .cluster .play { order: 2; width: 60px; height: 60px; padding: 13px; background: rgba(0, 0, 0, .44); }
+.touch-ui .cluster .back { order: 1; }
+.touch-ui .cluster .fwd { order: 3; }
+.touch-ui .ib { width: 42px; height: 42px; padding: 9px; border-radius: 12px; }
+.touch-ui .ib:active { background: rgba(255, 255, 255, .18); }
+.touch-ui .ib.small { width: 40px; height: 40px; padding: 9px; }
+.touch-ui .time { margin-left: 4px; font-size: 13px; }
+.touch-ui .scrub { height: 32px; margin: 0 8px; }
+.touch-ui .knob { transform: none; }
+.touch-ui .scrub.drag .knob { transform: scale(1.35); }
+.touch-ui .tip { bottom: 30px; font-size: 13px; padding: 4px 8px; }
+.touch-ui .react-tray { bottom: 82px; }
+.touch-ui.immersive .react-tray { bottom: calc(84px + var(--sab)); }
+.touch-ui .seg button { padding-top: 8px; padding-bottom: 8px; }
+/* В полноэкранном режиме два пальца на кадре — «заполнить экран», а не масштаб всей страницы */
+.touch-ui.immersive .stage video { touch-action: none; }
+.touch-ui .react-bar button { padding: 8px; }
+/* Сцена побольше (телефон боком, планшет) — кнопки ещё крупнее */
+@container stage (min-height: 300px) {
+  .touch-ui .cluster { gap: 44px; }
+  .touch-ui .cluster .ib { width: 56px; height: 56px; padding: 12px; }
+  .touch-ui .cluster .play { width: 74px; height: 74px; padding: 16px; }
+}
+/* Совсем маленькая сцена (узкий телефон) — компактнее, чтобы не наезжать на нижнюю строку */
+@container stage (max-height: 205px) {
+  .touch-ui .cluster { gap: 16px; transform: translate(-50%, -66%); }
+  .touch-ui .cluster .ib { width: 40px; height: 40px; padding: 8px; }
+  .touch-ui .cluster .play { width: 50px; height: 50px; padding: 11px; }
+}
+
+/* ---------- широкий экран: чат можно спрятать (кнопка 💬 или клавиша T) ---------- */
+@media (min-width: 900px) {
+  .chat-btn { display: block; }
+  body:not(.immersive).chat-hidden .chat { display: none; }
+}
+@media (min-width: 1600px) { :root { --chat-w: 380px; } }
+@media (min-width: 2200px) { :root { --chat-w: 430px; } }
 
 /* ---------- телефоны и узкие окна ---------- */
 @media (max-width: 899px) {
@@ -394,33 +566,51 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
   .layout { flex-direction: column; }
   .main-col { flex: none; }
   .stage { flex: none; width: 100%; height: min(56.25vw, 52vh); }
-  .chat { width: auto; flex: 1; border-left: 0; }
-  .sourcebar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; padding-left: calc(10px + var(--sal)); }
+  .chat { width: auto; flex: 1; border-left: 0; padding-right: 0; }
+  .sourcebar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; padding-left: calc(10px + var(--sal)); padding-right: calc(10px + var(--sar)); }
   .src-actions { justify-content: flex-start; }
   .src-actions .btn { padding: 7px 10px; font-size: 13px; }
   .vol { display: none; }
   .ib { width: 36px; height: 36px; padding: 7px; }
-  .controls { padding: 26px 6px 2px; }
+  .controls { padding: 26px 6px 2px; padding-left: calc(6px + var(--sal)); padding-right: calc(6px + var(--sar)); }
   .empty { padding: 14px 16px 64px; gap: 6px; }
   .empty h2 { font-size: 17px; }
   .empty p { font-size: 13px; margin-bottom: 2px; }
   .empty-icon { width: 30px; height: 30px; }
   .immersive .chat { width: min(var(--chat-w), 62vw); }
   .immersive.chat-open .controls { right: min(var(--chat-w), 62vw); }
+  .touch-ui .ib { width: 42px; height: 42px; padding: 9px; }
 }
+@media (max-width: 599px) {
+  /* Длинная строка о фильме — в одну строку с многоточием, чтобы чату оставалось больше места */
+  .src-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Окно выбора фильма — шторкой снизу */
+  .modal { align-items: flex-end; padding: 0; }
+  .sheet { width: 100%; max-height: 88vh; max-height: 88dvh; border-radius: 20px 20px 0 0; border-width: 1px 0 0; padding-bottom: var(--sab); animation: sheetUp .22s ease-out; }
+  .sheet::before { content: ""; display: block; flex: none; width: 38px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: #3a3f4c; }
+}
+@keyframes sheetUp { from { transform: translateY(48px); opacity: .4; } }
 @media (max-width: 480px) {
   .brand-text { display: none; }
   .chip .you { display: none; }
   .topbar { gap: 6px; }
   .seg button { padding: 6px 9px; font-size: 12px; }
-  .people { flex-wrap: nowrap; justify-content: flex-start; flex: 1 1 auto; }
-  .chip { max-width: 96px; min-width: 0; flex: 0 1 auto; padding: 3px 7px; gap: 5px; }
+  .chip { max-width: 96px; padding: 3px 7px; gap: 5px; }
   .time { font-size: 12px; margin-left: 2px; }
+}
+@media (max-width: 360px) {
+  .seg .lf { display: none; }
+  .seg .ls { display: inline; }
+  .topbar { padding-left: calc(8px + var(--sal)); padding-right: calc(8px + var(--sar)); }
+  .src-actions .btn { padding: 7px 9px; }
+  .react-bar { padding-left: 6px; padding-right: 6px; }
+  .chat-form { padding-left: 8px; padding-right: 8px; }
 }
 @media (hover: none) {
   .btn:hover { background: var(--panel-2); }
   .btn.primary:hover { background: var(--accent); }
   .ib:hover { background: none; }
+  .people:hover .chip:not(.me) { border-color: var(--line); }
 }
 
 /* На компьютере в полноэкранном режиме открытый чат не закрывает фильм — кадр сдвигается влево */
@@ -428,3 +618,22 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
   .immersive.chat-open .stage video { width: calc(100% - min(var(--chat-w), 46vw)); }
   .immersive.chat-open .react-layer { right: min(var(--chat-w), 46vw); }
 }
+
+/* ---------- экранная клавиатура открыта (телефоны, планшеты) ---------- */
+/* Страница занимает ровно видимую часть над клавиатурой — поле ввода не уезжает под неё */
+.kb-open:not(.native-fs) .app { position: fixed; top: 0; left: 0; right: 0; height: var(--vvh); transform: translateY(var(--vvt)); }
+.kb-open .cluster { display: none; } /* пока пишешь, крупные кнопки в центре кадра не мешают смотреть */
+@media (max-width: 899px) {
+  /* Пока пишешь сообщение, видео остаётся на виду, а лишние панели прячутся */
+  .kb-open:not(.immersive) .topbar, .kb-open:not(.immersive) .sourcebar, .kb-open .react-bar { display: none; }
+  .kb-open:not(.immersive) .stage { height: min(56.25vw, calc(var(--vvh) * .45)); }
+}
+
+/* ---------- меньше движения, если так настроено в системе ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .floater { animation-name: floatFade; animation-timing-function: linear; }
+  .toast { animation: toastOut .5s ease-in 5.5s forwards; }
+  .msg, .pop, .react-tray, .sheet { animation: none; }
+  .controls, .immersive .chat, .skip-ind, .msg { transition: none; }
+}
+@keyframes floatFade { 0% { opacity: 0; } 15%, 75% { opacity: 1; } 100% { opacity: 0; } }

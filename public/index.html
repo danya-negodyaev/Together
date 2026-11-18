@@ -2,7 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- interactive-widget: на Android экранная клавиатура уменьшает страницу, а не перекрывает её -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0c0d11">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
@@ -25,7 +26,7 @@
       <svg viewBox="0 0 64 64"><circle cx="24" cy="32" r="18" fill="#ff6b3d"/><circle cx="40" cy="32" r="18" fill="#ffb547" fill-opacity=".85"/><path d="M28 23.5v17l13-8.5z" fill="#fff"/></svg>
     </div>
     <h1>Together</h1>
-    <p class="sub">Кино вдвоём, даже на расстоянии</p>
+    <p class="sub">Кино вместе, даже на расстоянии</p>
     <label>Как тебя зовут
       <input id="nameInput" class="field" maxlength="24" autocomplete="nickname" autocapitalize="words" enterkeyhint="next" required>
     </label>
@@ -42,10 +43,12 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-text">Together</span></div>
     <div class="seg" role="group" aria-label="Режим просмотра">
-      <button type="button" data-mode="stream" title="Фильм идёт с компьютера, где запущен сервер">С компьютера</button>
-      <button type="button" data-mode="local" title="У каждого свой файл, синхронизируется только управление">Свой файл</button>
+      <!-- На очень узких экранах показываются короткие подписи -->
+      <button type="button" data-mode="stream" title="Фильм идёт с компьютера, где запущен сервер"><span class="lf">С компьютера</span><span class="ls">С ПК</span></button>
+      <button type="button" data-mode="local" title="У каждого свой файл, синхронизируется только управление"><span class="lf">Свой файл</span><span class="ls">Файл</span></button>
     </div>
-    <div id="people" class="people"></div>
+    <!-- Участники: имена, а если не помещаются — кружки с буквами. По нажатию — список со статусами -->
+    <button id="people" class="people" type="button" title="Кто в комнате" aria-label="Кто в комнате" aria-haspopup="dialog"></button>
     <span id="conn" class="conn" title="Соединение с сервером"></span>
   </header>
 
@@ -71,10 +74,25 @@
         <div id="toasts" class="toasts" aria-live="polite"></div>
         <div id="flash" class="flash" hidden></div>
 
+        <!-- Подсказка при двойном касании: «назад/вперёд на N секунд» -->
+        <div id="skipBack" class="skip-ind left" aria-hidden="true"><span data-icon="rewind"></span><b></b></div>
+        <div id="skipFwd" class="skip-ind right" aria-hidden="true"><span data-icon="ffwd"></span><b></b></div>
+
+        <!-- Видео ушло в отдельное окно «картинка в картинке» -->
+        <div id="pipNote" class="pip-note" hidden>
+          <span class="empty-icon" data-icon="pip"></span>
+          <p>Видео в отдельном окне</p>
+          <button id="pipBack" class="btn" type="button">Вернуть сюда</button>
+        </div>
+
         <div id="tapjoin" class="tapjoin" hidden>
           <button id="tapjoinBtn" type="button" class="btn primary big"><span data-icon="play"></span>Нажми, чтобы присоединиться</button>
         </div>
 
+        <!--
+          Панель управления. На компьютере — строка внизу.
+          На сенсорных экранах кнопки «пауза» и «±10 с» (блок .cluster) переезжают в центр кадра.
+        -->
         <div id="controls" class="controls">
           <div id="scrub" class="scrub" aria-label="Перемотка">
             <div class="track"><div id="scrubBuf" class="buf"></div><div id="scrubProg" class="prog"></div></div>
@@ -82,17 +100,23 @@
             <div id="scrubTip" class="tip"></div>
           </div>
           <div class="row">
-            <button id="playBtn" class="ib" type="button" title="Воспроизведение / пауза (пробел)" aria-label="Воспроизведение"></button>
-            <button id="backBtn" class="ib" type="button" title="Назад на 10 секунд (←)" aria-label="Назад на 10 секунд" data-icon="back10"></button>
-            <button id="fwdBtn" class="ib" type="button" title="Вперёд на 10 секунд (→)" aria-label="Вперёд на 10 секунд" data-icon="fwd10"></button>
+            <div class="cluster">
+              <button id="playBtn" class="ib play" type="button" title="Воспроизведение / пауза (пробел)" aria-label="Воспроизведение"></button>
+              <button id="backBtn" class="ib back" type="button" title="Назад на 10 секунд (←)" aria-label="Назад на 10 секунд" data-icon="back10"></button>
+              <button id="fwdBtn" class="ib fwd" type="button" title="Вперёд на 10 секунд (→)" aria-label="Вперёд на 10 секунд" data-icon="fwd10"></button>
+            </div>
             <span id="time" class="time">0:00 / 0:00</span>
             <span class="spacer"></span>
+            <button id="reactBtn" class="ib react-btn" type="button" title="Реакции" aria-label="Реакции" aria-expanded="false" data-icon="emoji"></button>
             <button id="muteBtn" class="ib" type="button" title="Звук (M)" aria-label="Звук"></button>
             <input id="vol" class="vol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Громкость">
             <button id="ccBtn" class="ib" type="button" title="Субтитры (C)" aria-label="Субтитры" data-icon="cc"></button>
-            <button id="chatBtn" class="ib chat-btn" type="button" title="Чат" aria-label="Чат" data-icon="chat"><span id="chatBadge" class="badge-dot" hidden></span></button>
+            <button id="pipBtn" class="ib" type="button" title="Картинка в картинке (P)" aria-label="Картинка в картинке" data-icon="pip" hidden></button>
+            <button id="chatBtn" class="ib chat-btn" type="button" title="Чат (T)" aria-label="Чат" data-icon="chat"><span id="chatBadge" class="badge-dot" hidden></span></button>
             <button id="fsBtn" class="ib" type="button" title="Во весь экран (F)" aria-label="Во весь экран"></button>
           </div>
+          <!-- Быстрые реакции, когда чат скрыт (полный экран, телефон боком) -->
+          <div id="reactTray" class="react-tray" hidden></div>
         </div>
       </div>
 
@@ -126,6 +150,12 @@
     </aside>
   </div>
 </main>
+
+<!-- ============ Кто в комнате ============ -->
+<div id="peoplePop" class="pop" role="dialog" aria-labelledby="peopleTitle" hidden>
+  <div id="peopleTitle" class="pop-title"></div>
+  <div id="peopleList" class="people-list"></div>
+</div>
 
 <!-- ============ Выбор фильма ============ -->
 <div id="picker" class="modal" hidden>

@@ -2,8 +2,12 @@
   "name": "Together",
   "short_name": "Together",
   "description": "Совместный просмотр фильмов с чатом",
+  "lang": "ru",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0c0d11",
   "theme_color": "#0c0d11",
   "icons": [
