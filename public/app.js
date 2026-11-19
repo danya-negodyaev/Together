@@ -97,6 +97,9 @@
 
   // ================================================================ окружение
   const UA = navigator.userAgent;
+  // iPadOS 13+ представляется компьютером Mac — узнаём его по сенсорному экрану.
+  // navigator.platform устарел, но другого способа в Safari нет — не заменять
+  // noinspection JSDeprecatedSymbols
   const IS_IOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const IS_IPHONE = /iP(hone|od)/.test(UA);
   const IS_TV = /SmartTV|SMART-TV|Tizen|Web0S|webOS|NetCast|HbbTV|BRAVIA|Android TV|GoogleTV|AFT[A-Z]|CrKey/i.test(UA);
@@ -110,7 +113,12 @@
   const PHONE_LANDSCAPE = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
   const WIDE = window.matchMedia('(min-width: 900px)'); // раскладка с чатом сбоку (как в style.css)
   const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const onMedia = (mq, fn) => { if (mq.addEventListener) mq.addEventListener('change', fn); else if (mq.addListener) mq.addListener(fn); };
+  /** Подписка на смену медиазапроса. */
+  const onMedia = (mq, fn) => {
+    // addListener — запасной путь для Safari 13 и старее, не убирать
+    // noinspection JSDeprecatedSymbols
+    if (mq.addEventListener) mq.addEventListener('change', fn); else if (mq.addListener) mq.addListener(fn);
+  };
 
   /** Телефон, а не планшет: короткая сторона экрана меньше 600 точек. */
   function isPhone() {
@@ -120,7 +128,10 @@
   function screenLandscape() {
     const o = screen.orientation;
     if (o && typeof o.type === 'string') return o.type.indexOf('landscape') === 0;
-    if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+    // Старые iPhone (iOS до 16.4) не знают screen.orientation — тогда смотрим устаревший window.orientation
+    // noinspection JSDeprecatedSymbols
+    const angle = window.orientation;
+    if (typeof angle === 'number') return Math.abs(angle) === 90;
     return window.innerWidth > window.innerHeight;
   }
   /** Телефон повёрнут боком — фильм сам разворачивается на весь экран. */
@@ -142,8 +153,105 @@
   const STALL_MS = 1600;    // столько стоим на месте во время игры — значит, кончился буфер
 
   // ================================================================ элементы
-  const video = $('#video');
-  const E = {};
+  // Нестандартные возможности Safari: на iPhone и iPad полный экран и «картинка в картинке» работают только
+  // через них. В стандартных описаниях DOM их нет — описываем сами, иначе редактор принимает их за опечатки.
+  /**
+   * @typedef {Object} SafariVideoExtras
+   * @property {(mode: string) => boolean} [webkitSupportsPresentationMode]
+   * @property {(mode: string) => void} [webkitSetPresentationMode]
+   * @property {string} [webkitPresentationMode]
+   */
+  /** @typedef {HTMLVideoElement & SafariVideoExtras} SafariVideo */
+  /**
+   * @typedef {Object} SafariFullscreen
+   * @property {Element|null} [webkitFullscreenElement] у документа
+   * @property {() => void} [webkitExitFullscreen] у документа
+   * @property {() => void} [webkitRequestFullscreen] у элемента
+   */
+
+  const video = /** @type {SafariVideo} */ ($('#video'));
+
+  /**
+   * Элементы страницы по id из index.html. Описание нужно редактору: по нему он знает тип каждого
+   * элемента и замечает опечатки в именах. Новый элемент добавляется и сюда, и в список ниже.
+   * @typedef {Object} Elements
+   * @property {HTMLElement} login
+   * @property {HTMLFormElement} loginForm
+   * @property {HTMLInputElement} nameInput
+   * @property {HTMLInputElement} passInput
+   * @property {HTMLLabelElement} passLabel
+   * @property {HTMLElement} loginError
+   * @property {HTMLElement} app
+   * @property {HTMLElement} layout
+   * @property {HTMLElement} stage
+   * @property {HTMLButtonElement} people
+   * @property {HTMLElement} conn
+   * @property {HTMLElement} empty
+   * @property {HTMLElement} emptyTitle
+   * @property {HTMLElement} emptyText
+   * @property {HTMLButtonElement} emptyBtn
+   * @property {HTMLElement} wait
+   * @property {HTMLElement} waitText
+   * @property {HTMLButtonElement} waitSkip
+   * @property {HTMLElement} offline
+   * @property {HTMLElement} reactLayer
+   * @property {HTMLElement} toasts
+   * @property {HTMLElement} flash
+   * @property {HTMLElement} tapjoin
+   * @property {HTMLButtonElement} tapjoinBtn
+   * @property {HTMLElement} controls
+   * @property {HTMLElement} scrub
+   * @property {HTMLElement} scrubBuf
+   * @property {HTMLElement} scrubProg
+   * @property {HTMLElement} scrubKnob
+   * @property {HTMLElement} scrubTip
+   * @property {HTMLButtonElement} playBtn
+   * @property {HTMLButtonElement} backBtn
+   * @property {HTMLButtonElement} fwdBtn
+   * @property {HTMLElement} time
+   * @property {HTMLButtonElement} muteBtn
+   * @property {HTMLInputElement} vol
+   * @property {HTMLButtonElement} ccBtn
+   * @property {HTMLButtonElement} chatBtn
+   * @property {HTMLElement} chatBadge
+   * @property {HTMLButtonElement} fsBtn
+   * @property {HTMLElement} srcTitle
+   * @property {HTMLElement} srcMeta
+   * @property {HTMLElement} srcPeers
+   * @property {HTMLButtonElement} pickMovieBtn
+   * @property {HTMLLabelElement} pickFileBtn
+   * @property {HTMLLabelElement} pickSubsBtn
+   * @property {HTMLElement} chat
+   * @property {HTMLButtonElement} chatClose
+   * @property {HTMLElement} messages
+   * @property {HTMLElement} reactBar
+   * @property {HTMLFormElement} chatForm
+   * @property {HTMLInputElement} chatInput
+   * @property {HTMLElement} replyBar
+   * @property {HTMLElement} replyWho
+   * @property {HTMLElement} replyText
+   * @property {HTMLButtonElement} replyCancel
+   * @property {HTMLElement} picker
+   * @property {HTMLElement} pickerList
+   * @property {HTMLElement} pickerFoot
+   * @property {HTMLButtonElement} pickerRefresh
+   * @property {HTMLButtonElement} pickerClose
+   * @property {HTMLInputElement} fileInput
+   * @property {HTMLInputElement} subsInput
+   * @property {HTMLElement} skipBack
+   * @property {HTMLElement} skipFwd
+   * @property {HTMLElement} pipNote
+   * @property {HTMLButtonElement} pipBack
+   * @property {HTMLButtonElement} reactBtn
+   * @property {HTMLElement} reactTray
+   * @property {HTMLButtonElement} pipBtn
+   * @property {HTMLElement} peoplePop
+   * @property {HTMLElement} peopleTitle
+   * @property {HTMLElement} peopleList
+   * @property {NodeListOf<HTMLElement>} modeBtns
+   * @property {HTMLElement} topbar
+   */
+  const E = /** @type {Elements} */ ({});
   ['login', 'loginForm', 'nameInput', 'passInput', 'passLabel', 'loginError', 'app', 'layout', 'stage', 'people', 'conn',
     'empty', 'emptyTitle', 'emptyText', 'emptyBtn', 'wait', 'waitText', 'waitSkip', 'offline', 'reactLayer', 'toasts', 'flash',
     'tapjoin', 'tapjoinBtn', 'controls', 'scrub', 'scrubBuf', 'scrubProg', 'scrubKnob', 'scrubTip', 'playBtn', 'backBtn',
@@ -153,8 +261,8 @@
     'picker', 'pickerList', 'pickerFoot', 'pickerRefresh', 'pickerClose', 'fileInput', 'subsInput',
     'skipBack', 'skipFwd', 'pipNote', 'pipBack', 'reactBtn', 'reactTray', 'pipBtn', 'peoplePop', 'peopleTitle', 'peopleList',
   ].forEach((id) => { E[id] = document.getElementById(id); });
-  E.modeBtns = document.querySelectorAll('[data-mode]');
-  E.topbar = document.querySelector('.topbar');
+  E.modeBtns = /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-mode]'));
+  E.topbar = /** @type {HTMLElement} */ (document.querySelector('.topbar'));
 
   // ================================================================ состояние клиента
   const S = {
@@ -191,6 +299,7 @@
     seekIssuedAt: 0,
     seekCost: 0.15,       // сколько секунд обычно занимает перемотка (подстраивается само)
     lastHardSeekAt: 0,
+    lastPauseFixAt: 0,    // когда последний раз выравнивали кадр на паузе
     dragging: false,
     dragTime: 0,
     stallStart: 0,
@@ -213,10 +322,19 @@
     skipSum: 0,           // сколько секунд набралось в серии — для подсказки на экране
     skipDir: 0,
     lastPosStateAt: 0,    // когда последний раз сообщали системе позицию фильма
+    lastMediaAt: 0,       // когда последний раз нажали медиакнопку (одно нажатие может прийти дважды)
     unread: 0,
     lastStatusKey: '',
     lastStatusAt: 0,
     loginErrorText: '',
+    emptyAction: null,    // что делает кнопка на заставке «нет фильма»
+    pickerFrom: null,     // откуда открыли выбор фильма — туда потом вернём фокус
+    // таймеры интерфейса
+    idleTimer: 0,         // спрятать панель управления
+    flashTimer: 0,        // убрать подсказку в центре кадра
+    trayTimer: 0,         // закрыть лоток реакций
+    skipHintTimer: 0,     // спрятать подсказку «±N с» у края кадра
+    offlineTimer: null,   // показать плашку «нет связи» (с задержкой: браузер переподключается сам)
   };
   if (!/^[a-z0-9]{16}$/.test(S.uid)) { S.uid = rid(16); store.set('tg_uid', S.uid); }
   if (!/^[a-z0-9]{16}$/.test(S.cid)) { S.cid = rid(16); sess.set('tg_cid', S.cid); }
@@ -226,21 +344,33 @@
   const touchInput = () => S.pointer !== 'mouse';
 
   // ================================================================ связь с сервером
+  /**
+   * Ошибка запроса к серверу; в status — код ответа (401 — нужно войти заново, 409 — нет подключения).
+   * @typedef {Error & {status?: number}} HttpError
+   */
+
   async function api(path, body) {
-    const opts = { method: body ? 'POST' : 'GET', headers: {}, cache: 'no-store', credentials: 'same-origin' };
-    if (S.token) opts.headers['X-Token'] = S.token;
-    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    /** @type {Record<string, string>} */
+    const headers = {};
+    if (S.token) headers['X-Token'] = S.token;
+    /** @type {RequestInit} */
+    const opts = { method: body ? 'POST' : 'GET', headers, cache: 'no-store', credentials: 'same-origin' };
+    if (body) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     const res = await fetch(path, opts);
     let data = null;
     try { data = await res.json(); } catch (e) { /* ignore */ }
     if (!res.ok) {
-      const err = new Error((data && data.error) || 'HTTP ' + res.status);
+      const err = /** @type {HttpError} */ (new Error((data && data.error) || 'HTTP ' + res.status));
       err.status = res.status;
       throw err;
     }
     return data;
   }
 
+  /**
+   * Отправить действие на сервер. Ошибки обрабатываются здесь же, поэтому ответа можно не ждать:
+   * такие вызовы помечены void — «результат не нужен намеренно».
+   */
   function act(type, extra) {
     if (!S.ready) {
       if (type !== 'status') flash('Нет связи с сервером');
@@ -294,7 +424,7 @@
     renderChat(d.chat || []);
     onState(d.state);
     sendStatus(true);
-    syncClock();
+    void syncClock();
   }
 
   function onState(st) {
@@ -542,7 +672,7 @@
       S.stallStart = 0;
       // На паузе у всех должен быть один и тот же кадр
       if (video.paused && !video.seeking && video.readyState >= 1 && !S.dragging && !S.unlocking &&
-          now > S.holdSyncUntil && now - (S.lastPauseFixAt || 0) > 1000 &&
+          now > S.holdSyncUntil && now - S.lastPauseFixAt > 1000 &&
           Math.abs(video.currentTime - expectedPos()) > 0.15) {
         S.lastPauseFixAt = now;
         seekTo(expectedPos());
@@ -580,7 +710,7 @@
         S.bufferWaits++;
         S.waitAhead = 0;
         S.waitProgressAt = now;
-        act('buffering', { position: Math.round(ct * 1000) / 1000 });
+        void act('buffering', { position: Math.round(ct * 1000) / 1000 });
         sendStatus(true);
       }
 
@@ -618,7 +748,7 @@
         S.lastBufferedAt = now;
         S.stallStart = 0;
         S.win = null;
-        act('buffered');
+        void act('buffered');
         sendStatus(true);
       }
     }
@@ -639,16 +769,16 @@
     const now = performance.now();
     if (S.unlocking || !S.room || now < S.quietUntil || now < S.quietPlayUntil) return;
     // Запуск не от нас (кнопка на наушниках, экран блокировки) — сообщаем всем
-    if (!S.room.playing) act('play', { position: video.currentTime });
+    if (!S.room.playing) void act('play', { position: video.currentTime });
   });
   video.addEventListener('pause', () => {
     const now = performance.now();
     if (S.unlocking || !S.room || video.ended || now < S.quietUntil || now < S.quietPauseUntil) return;
     // Пауза не от нас (звонок, наушники, свернули Safari) — ставим паузу всем
-    if (S.room.playing) act('pause', { position: video.currentTime });
+    if (S.room.playing) void act('pause', { position: video.currentTime });
   });
   video.addEventListener('ended', () => {
-    if (S.room && S.room.playing) act('pause', { position: video.duration });
+    if (S.room && S.room.playing) void act('pause', { position: video.duration });
   });
   video.addEventListener('error', () => {
     if (!S.sourceKey || !video.error) return;
@@ -676,7 +806,10 @@
   video.addEventListener('volumechange', renderMute);
   video.addEventListener('durationchange', renderSource);
   // Позиция для экрана блокировки и системных медиа-кнопок — после каждого заметного события
-  ['loadedmetadata', 'play', 'pause', 'seeked'].forEach((ev) => video.addEventListener(ev, updatePositionState));
+  video.addEventListener('loadedmetadata', updatePositionState);
+  video.addEventListener('play', updatePositionState);
+  video.addEventListener('pause', updatePositionState);
+  video.addEventListener('seeked', updatePositionState);
 
   // ---------------------------------------------------------------- жесты (нужны iPhone для звука)
   function onGesture(e) {
@@ -701,11 +834,11 @@
     const r = S.room;
     if (!r || !S.sourceKey) return;
     if (r.playing) {
-      act('pause', { position: Math.round(localPos() * 1000) / 1000 });
+      void act('pause', { position: Math.round(localPos() * 1000) / 1000 });
     } else {
       let pos = r.position;
       if (atEnd(pos)) pos = 0; // фильм закончился — начинаем сначала
-      act('play', { position: pos });
+      void act('play', { position: pos });
     }
   }
 
@@ -723,7 +856,7 @@
     t = clampSeek(t);
     if (Math.abs(video.currentTime - t) > 0.05) seekTo(t);
     S.holdSyncUntil = performance.now() + 2500;
-    act('seek', { position: Math.round(t * 1000) / 1000 });
+    void act('seek', { position: Math.round(t * 1000) / 1000 });
   }
 
   /**
@@ -775,8 +908,8 @@
     other.classList.remove('show');
     node.querySelector('b').textContent = Math.round(sum) + ' с';
     node.classList.add('show');
-    clearTimeout(node.hideTimer);
-    node.hideTimer = setTimeout(() => node.classList.remove('show'), 650);
+    clearTimeout(S.skipHintTimer);
+    S.skipHintTimer = setTimeout(() => node.classList.remove('show'), 650);
   }
 
   // ================================================================ отрисовка
@@ -869,7 +1002,7 @@
   /** Имена не помещаются в строку — показываем кружки с буквами, а лишних прячем за «+N». */
   function fitPeople() {
     const box = E.people;
-    const chips = Array.from(box.querySelectorAll('.chip'));
+    const chips = /** @type {HTMLElement[]} */ (Array.from(box.querySelectorAll('.chip')));
     box.classList.remove('compact');
     chips.forEach((c) => { c.hidden = false; });
     const old = box.querySelector('.more');
@@ -938,7 +1071,8 @@
   E.people.addEventListener('click', () => { if (E.peoplePop.hidden) openPeople(); else closePeople(); });
   // Нажатие мимо списка закрывает его
   document.addEventListener('pointerdown', (e) => {
-    if (E.peoplePop.hidden || E.peoplePop.contains(e.target) || E.people.contains(e.target)) return;
+    const t = /** @type {Node} */ (e.target);
+    if (E.peoplePop.hidden || E.peoplePop.contains(t) || E.people.contains(t)) return;
     closePeople();
   }, true);
 
@@ -1101,7 +1235,7 @@
         b.title = 'Отправить реакцию';
         b.setAttribute('aria-label', 'Реакция ' + em);
         b.addEventListener('click', () => {
-          act('react', { emoji: em });
+          void act('react', { emoji: em });
           if (box === E.reactTray) bumpTray();
         });
         box.appendChild(b);
@@ -1261,7 +1395,7 @@
     msgData.set(m.id, m);
     // Слишком старые сообщения убираем со страницы вместе с записями о них
     while (box.childElementCount > 400) {
-      const first = box.firstElementChild;
+      const first = /** @type {HTMLElement} */ (box.firstElementChild);
       if (first.dataset.id) { msgEls.delete(first.dataset.id); msgData.delete(first.dataset.id); }
       first.remove();
     }
@@ -1348,8 +1482,9 @@
 
   E.messages.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse') return;
-    const node = e.target.closest('.msg');
-    if (!node || e.target.closest('.rp')) return;
+    const t = /** @type {HTMLElement} */ (e.target);
+    const node = t.closest('.msg');
+    if (!node || t.closest('.rp')) return;
     swipe = { node, pid: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, active: false };
   });
 
@@ -1389,10 +1524,10 @@
   // Нажатия в ленте: кнопка «Ответить», цитата, выбор сообщения пальцем
   E.messages.addEventListener('click', (e) => {
     if (Date.now() - swipeEndAt < 400) return; // это был свайп, а не касание
-    const t = e.target;
+    const t = /** @type {HTMLElement} */ (e.target);
     const rb = t.closest('.rp');
-    if (rb) { startReply(rb.closest('.msg').dataset.id); return; }
-    const q = t.closest('.quote');
+    if (rb) { startReply(/** @type {HTMLElement} */ (rb.closest('.msg')).dataset.id); return; }
+    const q = /** @type {HTMLElement|null} */ (t.closest('.quote'));
     if (q) { jumpTo(q.dataset.jump); return; }
     // На сенсорном экране касание сообщения показывает у него кнопку «Ответить»
     if (touchInput()) {
@@ -1427,11 +1562,14 @@
     const payload = { text };
     if (S.replyTo) payload.replyTo = S.replyTo.id;
     cancelReply();
-    act('chat', payload);
+    void act('chat', payload);
   });
 
   // ================================================================ полноэкранный режим
-  function isNativeFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  /** Документ вместе с нестандартными функциями Safari для полного экрана. */
+  const doc = /** @type {Document & SafariFullscreen} */ (document);
+
+  function isNativeFs() { return !!(document.fullscreenElement || doc.webkitFullscreenElement); }
 
   function updateImmersive() {
     const native = isNativeFs();
@@ -1456,7 +1594,7 @@
   }
 
   function exitFullscreen() {
-    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    const ex = document.exitFullscreen || doc.webkitExitFullscreen;
     try {
       const p = ex && ex.call(document);
       return p && p.then ? p.catch(() => {}) : Promise.resolve();
@@ -1464,9 +1602,9 @@
   }
 
   function toggleFullscreen() {
-    if (isNativeFs()) { exitFullscreen(); return; }
+    if (isNativeFs()) { void exitFullscreen(); return; }
     if (S.pseudoFs) { S.pseudoFs = false; updateImmersive(); return; }
-    const target = E.layout;
+    const target = /** @type {HTMLElement & SafariFullscreen} */ (E.layout);
     // iPhone не даёт развернуть на весь экран ничего, кроме голого видео, — растягиваем страницу сами
     const fallback = () => {
       S.pseudoFs = true;
@@ -1525,8 +1663,7 @@
     if (!E.picker.hidden || !E.reactTray.hidden || !E.peoplePop.hidden) return false;
     const a = document.activeElement;
     // На кнопке панели стоит фокус с клавиатуры — не прячем, иначе не видно, где он
-    if (a && E.controls.contains(a) && isFocusVisible(a)) return false;
-    return true;
+    return !(a && E.controls.contains(a) && isFocusVisible(a));
   }
   function isFocusVisible(node) {
     try { return node.matches(':focus-visible'); } catch (e) { return false; }
@@ -1644,12 +1781,12 @@
   E.chatBtn.addEventListener('click', toggleChat);
   E.chatClose.addEventListener('click', () => { S.chatOpen = false; updateImmersive(); });
   E.tapjoinBtn.addEventListener('click', () => renderOverlay());
-  E.waitSkip.addEventListener('click', () => { if (S.room) act('play', { position: S.room.position }); });
+  E.waitSkip.addEventListener('click', () => { if (S.room) void act('play', { position: S.room.position }); });
   E.emptyBtn.addEventListener('click', () => { if (S.emptyAction) S.emptyAction(); });
   E.pickMovieBtn.addEventListener('click', openPicker);
   E.modeBtns.forEach((b) => b.addEventListener('click', () => {
     if (!S.room || S.room.mode === b.dataset.mode) return;
-    act('setMode', { mode: b.dataset.mode });
+    void act('setMode', { mode: b.dataset.mode });
   }));
 
   // Громкость
@@ -1737,7 +1874,7 @@
   // Горячие клавиши (e.code не зависит от раскладки)
   document.addEventListener('keydown', (e) => {
     if (!S.room || E.app.hidden || e.defaultPrevented) return;
-    const t = e.target;
+    const t = /** @type {HTMLElement} */ (e.target);
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
       // Esc в поле чата: сначала отменяет ответ, повторное нажатие убирает фокус
       if (e.key === 'Escape' && t === E.chatInput) { if (S.replyTo) cancelReply(); else t.blur(); }
@@ -1762,7 +1899,7 @@
       case 'KeyF': e.preventDefault(); toggleFullscreen(); break;
       case 'KeyM': toggleMute(); break;
       case 'KeyC': toggleSubs(); break;
-      case 'KeyP': e.preventDefault(); togglePip(); break;
+      case 'KeyP': e.preventDefault(); void togglePip(); break;
       case 'KeyT': toggleChat(); break;
       case 'Enter':
         e.preventDefault();
@@ -1817,7 +1954,7 @@
     if (/^WEBVTT/.test(t)) return t;
     t = t.replace(/(\d+):(\d{1,2}):(\d{1,2})[,.](\d{1,3})/g,
       (_, h, m, s, ms) => h.padStart(2, '0') + ':' + m.padStart(2, '0') + ':' + s.padStart(2, '0') + '.' + ms.padEnd(3, '0'));
-    t = t.replace(/\{\\[^}]*\}/g, '');
+    t = t.replace(/\{\\[^}]*}/g, '');
     return 'WEBVTT\n\n' + t.trim() + '\n';
   }
 
@@ -1912,7 +2049,7 @@
       dl.addEventListener('keydown', (e) => e.stopPropagation());
       row.appendChild(info);
       row.appendChild(dl);
-      const choose = () => { act('setMovie', { id: m.id }); closePicker(); };
+      const choose = () => { void act('setMovie', { id: m.id }); closePicker(); };
       row.addEventListener('click', choose);
       row.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); }
@@ -1932,7 +2069,7 @@
     e.preventDefault();
     const i = rows.indexOf(document.activeElement);
     const next = e.key === 'ArrowDown' ? (i < 0 ? 0 : Math.min(rows.length - 1, i + 1)) : (i < 0 ? rows.length - 1 : Math.max(0, i - 1));
-    rows[next].focus();
+    /** @type {HTMLElement} */ (rows[next]).focus();
   }
 
   E.pickerClose.addEventListener('click', closePicker);
@@ -1963,7 +2100,7 @@
     if (!force && key === S.lastStatusKey && now - S.lastStatusAt < 5000) return;
     S.lastStatusKey = key;
     S.lastStatusAt = now;
-    act('status', { status: st });
+    void act('status', { status: st });
   }
 
   // ================================================================ экран блокировки, уведомление, медиакнопки
@@ -2001,7 +2138,7 @@
   /** Медиакнопка может прийти дважды: клавишей и через системные медиа-кнопки — второй раз пропускаем. */
   function mediaOnce(fn) {
     const now = performance.now();
-    if (now - (S.lastMediaAt || 0) < 350) return;
+    if (now - S.lastMediaAt < 350) return;
     S.lastMediaAt = now;
     fn();
   }
@@ -2158,12 +2295,18 @@
   }
 
   // ================================================================ субтитры не прячутся под панелью
+  /**
+   * Строка субтитров. tgAuto — положение строки выбирает браузер (в файле оно не задано), значит, её можно двигать.
+   * @typedef {VTTCue & {tgAuto?: boolean}} MovableCue
+   */
+  /** @type {number|'auto'} */
   let cueLine = 'auto';
 
   /** Пока панель управления видна, строки субтитров приподнимаются над ней. */
   function placeCues(force) {
     const tt = video.textTracks;
     if (!tt || !tt.length) return;
+    /** @type {number|'auto'} */
     let want = 'auto';
     if (!document.body.classList.contains('idle') && S.sourceKey) {
       const stage = E.stage.getBoundingClientRect();
@@ -2182,13 +2325,13 @@
       if (!cues) continue;
       let moved = false;
       for (let j = 0; j < cues.length; j++) {
-        const c = cues[j];
+        const c = /** @type {MovableCue} */ (cues[j]);
         if (c.tgAuto == null) c.tgAuto = c.line === 'auto'; // положение, заданное в самом файле, не трогаем
         if (c.tgAuto && c.line !== want) { c.line = want; moved = true; }
       }
       // Строку, которая уже на экране, браузер сам не перерисует — переставляем её заново
       if (moved && track.activeCues) {
-        Array.from(track.activeCues).forEach((c) => {
+        /** @type {MovableCue[]} */ (Array.from(track.activeCues)).forEach((c) => {
           if (!c.tgAuto) return;
           try { track.removeCue(c); track.addCue(c); } catch (e) { /* ignore */ }
         });
@@ -2271,7 +2414,7 @@
     renderPlayBtn();
     updateImmersive();
     renderChatState();
-    syncClock();
+    void syncClock();
     setInterval(syncClock, 60000);
     setInterval(tick, 250);
     setInterval(() => sendStatus(false), 1000);
@@ -2280,7 +2423,7 @@
   document.addEventListener('visibilitychange', () => {
     updateWakeLock();
     if (document.hidden || !S.started || !S.authed) return;
-    syncClock();
+    void syncClock();
     if (!S.es || S.es.readyState === 2) connect();
     applyRoom();
   });
@@ -2306,5 +2449,5 @@
     else showLogin();
   }
 
-  boot();
+  void boot();
 })();

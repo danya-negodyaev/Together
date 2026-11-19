@@ -11,11 +11,23 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const { exec, spawn } = require('child_process');
+const { setInterval } = require('timers'); // явно таймеры Node: у них есть unref() (редактор иначе берёт браузерные)
+
+/**
+ * Переменные окружения, которые понимает сервер (все необязательные).
+ * @typedef {Object} TogetherEnv
+ * @property {string} [PORT] порт вместо указанного в config.json
+ * @property {string} [TOGETHER_CONFIG] путь к другому config.json
+ * @property {string} [TOGETHER_NO_BROWSER] не открывать сайт в браузере при запуске
+ * @property {string} [DISPLAY] есть рабочий стол (Linux, X11)
+ * @property {string} [WAYLAND_DISPLAY] есть рабочий стол (Linux, Wayland)
+ */
+const env = /** @type {TogetherEnv} */ (process.env);
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(ROOT, 'data');
-const CONFIG_PATH = process.env.TOGETHER_CONFIG ? path.resolve(process.env.TOGETHER_CONFIG) : path.join(ROOT, 'config.json');
+const CONFIG_PATH = env.TOGETHER_CONFIG ? path.resolve(env.TOGETHER_CONFIG) : path.join(ROOT, 'config.json');
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
 
 const VIDEO_TYPES = {
@@ -46,6 +58,7 @@ const SEC_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
 };
+const COOKIE = 'tg'; // имя cookie с токеном комнаты
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
   "media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
@@ -59,8 +72,19 @@ function randomPassword() {
   return s.slice(0, 5) + '-' + s.slice(5);
 }
 
+/**
+ * Настройки из config.json.
+ * @typedef {Object} Config
+ * @property {number} port
+ * @property {string} password  пароль комнаты
+ * @property {string} moviesDir папка с фильмами
+ * @property {boolean} openBrowser открывать ли сайт в браузере при запуске
+ * @property {string} secret    ключ для токена; меняется — все входят заново
+ */
+
+/** @returns {Config} */
 function loadConfig() {
-  let cfg = {};
+  let cfg = /** @type {Config} */ ({});
   const exists = fs.existsSync(CONFIG_PATH);
   if (exists) {
     try {
@@ -77,7 +101,12 @@ function loadConfig() {
     if (cfg[k] === undefined) { cfg[k] = defaults[k]; changed = true; }
   }
   if (!cfg.password || !String(cfg.password).trim()) { cfg.password = randomPassword(); changed = true; }
-  if (!cfg.secret) { cfg.secret = crypto.randomBytes(24).toString('hex'); changed = true; }
+  if (!cfg.secret) {
+    // WebStorm не понимает тип NonSharedBuffer из описаний Node 24 и не видит у toString() кодировки — код верный
+    // noinspection JSCheckFunctionSignatures
+    cfg.secret = crypto.randomBytes(24).toString('hex');
+    changed = true;
+  }
   if (changed) {
     try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n'); }
     catch (e) { console.warn('  Не удалось сохранить config.json: ' + e.message); }
@@ -86,7 +115,7 @@ function loadConfig() {
 }
 
 const cfg = loadConfig();
-const PORT = Number(process.env.PORT) || Number(cfg.port) || 8765;
+const PORT = Number(env.PORT) || Number(cfg.port) || 8765;
 const MOVIES_DIR = path.resolve(ROOT, String(cfg.moviesDir || 'movies'));
 const normPass = (s) => String(s == null ? '' : s).trim().toLowerCase();
 const TOKEN = crypto.createHmac('sha256', String(cfg.secret)).update('room:' + normPass(cfg.password)).digest('hex').slice(0, 48);
@@ -156,7 +185,7 @@ function readJson(req, limit = 64 * 1024) {
 
 function isAuthed(req, url) {
   // Подходит любой из способов: заголовок, параметр в ссылке или cookie
-  const candidates = [req.headers['x-token'], url.searchParams.get('t'), parseCookies(req.headers.cookie).tg];
+  const candidates = [req.headers['x-token'], url.searchParams.get('t'), parseCookies(req.headers.cookie)[COOKIE]];
   return candidates.some((t) => !!t && safeEqual(t, TOKEN));
 }
 
@@ -189,6 +218,7 @@ function contentDisposition(filename) {
 
 // ------------------------------------------------------------------ субтитры
 
+/** @param {Buffer} buf */
 function decodeTextBuffer(buf) {
   if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf.subarray(2));
   if (buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder('utf-16be').decode(buf.subarray(2));
@@ -204,7 +234,7 @@ function srtToVtt(text) {
   if (/^WEBVTT/.test(t)) return t.trim() + '\n';
   t = t.replace(/(\d+):(\d{1,2}):(\d{1,2})[,.](\d{1,3})/g,
     (_, h, m, s, ms) => `${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.padStart(2, '0')}.${ms.padEnd(3, '0')}`);
-  t = t.replace(/\{\\[^}]*\}/g, ''); // теги вида {\an8}
+  t = t.replace(/\{\\[^}]*}/g, ''); // теги вида {\an8}
   return 'WEBVTT\n\n' + t.trim() + '\n';
 }
 
@@ -244,6 +274,17 @@ function scanLibrary() {
   return out;
 }
 
+/**
+ * Фильм, выбранный в комнате (то, что видят браузеры).
+ * @typedef {Object} MovieInfo
+ * @property {string} id
+ * @property {string} name
+ * @property {string} ext
+ * @property {number} size
+ * @property {Array} subs
+ */
+
+/** @returns {MovieInfo} */
 function movieInfo(m) {
   return { id: m.id, name: m.name, ext: m.ext, size: m.size, subs: m.subs };
 }
@@ -252,6 +293,7 @@ function movieInfo(m) {
 
 const room = {
   mode: 'stream',      // 'stream' — фильм идёт с этого компьютера, 'local' — у каждого свой файл
+  /** @type {MovieInfo|null} */
   movie: null,         // для режима stream
   playing: false,
   position: 0,         // секунды на момент updatedAt
@@ -311,6 +353,20 @@ function commitState(by, action) {
   saveSoon();
 }
 
+/**
+ * Сообщение чата — так оно хранится и уходит браузерам.
+ * @typedef {Object} ChatMessage
+ * @property {string} [id]    присваивает pushMsg
+ * @property {number} [ts]    время, присваивает pushMsg
+ * @property {string} kind    'user' — от участника, 'system' — служебное
+ * @property {string|null} from
+ * @property {string|null} uid
+ * @property {string} text
+ * @property {string|null} [tag]  вид служебного сообщения
+ * @property {Object} [reply]     цитата сообщения, на которое отвечают (см. replySnapshot)
+ */
+
+/** @param {ChatMessage} m */
 function pushMsg(m) {
   m.id = Date.now().toString(36) + '-' + (++msgSeq);
   m.ts = Date.now();
@@ -459,6 +515,7 @@ function handleAction(client, body) {
     case 'chat': {
       const text = cleanText(body.text, 1000);
       if (!text) return false;
+      /** @type {ChatMessage} */
       const msg = { kind: 'user', from: client.name, uid: client.uid, text };
       // Ответ на сообщение: если исходное не нашлось, отправляем как обычное
       const reply = replySnapshot(body.replyTo);
@@ -689,6 +746,8 @@ function serveSubs(req, res, id) {
   if (!file || !SUB_EXTS.has(ext)) return notFound(res);
   fs.readFile(file, (err, buf) => {
     if (err || buf.length > 10 * 1024 * 1024) return notFound(res);
+    // WebStorm не считает NonSharedBuffer (тип из описаний Node 24) видом Buffer — код верный
+    // noinspection JSCheckFunctionSignatures
     const vtt = srtToVtt(decodeTextBuffer(buf));
     res.writeHead(200, Object.assign({ 'Content-Type': 'text/vtt; charset=utf-8', 'Cache-Control': 'no-cache' }, SEC_HEADERS));
     res.end(vtt);
@@ -711,7 +770,7 @@ async function handleLogin(req, res) {
   if (safeEqual(normPass(body.password), normPass(cfg.password))) {
     loginAttempts.delete(ip);
     return sendJson(res, 200, { token: TOKEN }, {
-      'Set-Cookie': `tg=${TOKEN}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`,
+      'Set-Cookie': `${COOKIE}=${TOKEN}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`,
     });
   }
   if (!rec) { rec = { n: 0, until: now + 15 * 60 * 1000 }; loginAttempts.set(ip, rec); }
@@ -777,7 +836,7 @@ function listAddresses() {
   const ifaces = os.networkInterfaces();
   for (const name of Object.keys(ifaces)) {
     for (const a of ifaces[name] || []) {
-      const v4 = a.family === 'IPv4' || a.family === 4;
+      const v4 = a.family === 'IPv4' || Number(a.family) === 4; // Node 18.0–18.3 отдавал число вместо строки
       if (!v4 || a.internal || a.address.startsWith('169.254.')) continue;
       const [x, y] = a.address.split('.').map(Number);
       const tailscale = /tailscale/i.test(name) || (x === 100 && y >= 64 && y <= 127);
@@ -790,7 +849,7 @@ function listAddresses() {
   return real.length ? real : out;
 }
 
-server.on('error', (e) => {
+server.on('error', /** @param {Error & {code?: string}} e */ (e) => {
   if (e.code === 'EADDRINUSE') {
     console.error(`\n  Порт ${PORT} уже занят. Возможно, сервер уже запущен в другом окне.`);
     console.error('  Закрой его или поменяй "port" в config.json.\n');
@@ -808,6 +867,8 @@ server.listen(PORT, () => {
   const ts = addrs.filter((a) => a.tailscale);
   const lan = addrs.filter((a) => !a.tailscale);
   const movies = scanLibrary().length;
+  // HTTPS у сервера нет, поэтому и ссылки для друзей — http
+  // noinspection HttpUrlsUsage
   const link = (host) => `http://${host}:${PORT}`;
   const key = encodeURIComponent(cfg.password);
   const L = [];
@@ -827,6 +888,7 @@ server.listen(PORT, () => {
   } else {
     L.push('    Tailscale не найден. Как подключить друга через интернет — см. README.md.');
     L.push('    Если на роутере проброшен порт, ссылка для друга такая:');
+    // noinspection HttpUrlsUsage
     L.push(`    http://ТВОЙ-ВНЕШНИЙ-IP:${PORT}/?k=${key}`);
   }
   L.push('');
@@ -836,7 +898,7 @@ server.listen(PORT, () => {
   L.push('');
   console.log(L.join('\n'));
 
-  if (cfg.openBrowser !== false && !process.env.TOGETHER_NO_BROWSER) {
+  if (cfg.openBrowser !== false && !env.TOGETHER_NO_BROWSER) {
     // Открываем сайт у себя сразу с паролем (только если в пароле нет символов, опасных для командной строки)
     const q = /^[\w-]+$/.test(String(cfg.password)) ? `/?k=${key}` : '/';
     openInBrowser(`http://localhost:${PORT}${q}`);
@@ -850,7 +912,7 @@ function openInBrowser(url) {
       exec(`start "" "${url}"`, () => {});
     } else if (process.platform === 'darwin') {
       spawn('open', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-    } else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+    } else if (env.DISPLAY || env.WAYLAND_DISPLAY) {
       // Без рабочего стола (например, сервер по SSH) браузер не открываем
       spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
     }

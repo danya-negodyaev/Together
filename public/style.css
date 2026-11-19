@@ -1,4 +1,10 @@
-/* Together — стили */
+/* Together — стили
+ *
+ * В WebStorm для проекта выключены две проверки (.idea/inspectionProfiles/Project_Default.xml):
+ *  - «Unused selector»: классы состояний (immersive, idle, kb-open…) и разметку чата, участников и списка
+ *    фильмов создаёт app.js — редактор этого не видит. Удаляя правило, проверьте поиском по app.js;
+ *  - «Float px values»: дробные размеры шрифта (12.5px и т. п.) выбраны намеренно.
+ */
 :root {
   --bg: #0c0d11;
   --panel: #14161c;
@@ -15,6 +21,7 @@
   --warn: #f5b942;
   --bad: #ff5c5c;
   --chat-w: 340px;
+  /* Отступы от выреза и скруглений экрана (safe area) */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
@@ -41,7 +48,7 @@ body.in-app { overflow: hidden; overscroll-behavior: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 label { -webkit-tap-highlight-color: transparent; }
 svg { display: block; width: 100%; height: 100%; fill: currentColor; }
-[data-icon] > svg, .ic > svg { pointer-events: none; }
+[data-icon] > svg { pointer-events: none; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; opacity: 0; }
 
 /* Рамка фокуса видна только при управлении с клавиатуры или пульта ТВ (мышью и пальцем — нет) */
@@ -95,15 +102,15 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .btn.big [data-icon] { width: 20px; height: 20px; }
 
 /* ---------- вход ---------- */
+/* 100vh — запасной вариант для браузеров без dvh (Safari до 15.4), не удалять */
+/*noinspection CssOverwrittenProperties*/
 .login {
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 18px;
-  padding-top: calc(24px + var(--sat));
-  padding-bottom: calc(24px + var(--sab));
+  padding: calc(24px + var(--sat)) 18px calc(24px + var(--sab));
   background:
     radial-gradient(900px 520px at 12% 8%, rgba(255, 107, 61, .16), transparent 60%),
     radial-gradient(700px 520px at 92% 92%, rgba(255, 181, 71, .10), transparent 60%),
@@ -128,16 +135,15 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .error { margin: 0; color: var(--bad); font-size: 14px; }
 
 /* ---------- каркас ---------- */
+/* 100vh — запасной вариант для браузеров без dvh, не удалять */
+/*noinspection CssOverwrittenProperties*/
 .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .topbar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
-  padding-top: calc(10px + var(--sat));
-  padding-left: calc(16px + var(--sal));
-  padding-right: calc(16px + var(--sar));
+  padding: calc(10px + var(--sat)) calc(16px + var(--sar)) 10px calc(16px + var(--sal));
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
@@ -213,13 +219,16 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .stage.fill video { object-fit: cover; } /* «развести пальцами» — видео на весь экран с обрезкой краёв */
 video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 
-.empty {
+/* Заставки поверх кадра: «нет фильма» (.empty) и «видео в отдельном окне» (.pip-note) */
+.empty, .pip-note {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;
   z-index: 3;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px;
-  padding: 24px 24px 80px;
   text-align: center;
+}
+.empty {
+  padding: 24px 24px 80px;
   color: var(--muted);
   background: radial-gradient(620px 320px at 50% 38%, rgba(255, 107, 61, .10), transparent 70%), #08090c;
 }
@@ -227,15 +236,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .empty p { margin: 0 0 6px; max-width: 440px; font-size: 14px; }
 .empty-icon { display: block; width: 44px; height: 44px; color: var(--accent); }
 
-.pip-note {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  z-index: 3;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px;
-  padding: 16px 16px 70px;
-  text-align: center;
-  background: #08090c;
-}
+.pip-note { padding: 16px 16px 70px; background: #08090c; }
 .pip-note p { margin: 0; font-weight: 650; }
 .pip-note .empty-icon { width: 38px; height: 38px; }
 
@@ -329,9 +330,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .controls {
   position: absolute; left: 0; right: 0; bottom: 0;
   z-index: 5;
-  padding: 34px 12px 8px;
-  padding-left: calc(12px + var(--sal));
-  padding-right: calc(12px + var(--sar));
+  padding: 34px calc(12px + var(--sar)) 8px calc(12px + var(--sal));
   background: linear-gradient(to top, rgba(0, 0, 0, .85), rgba(0, 0, 0, .45) 55%, transparent);
   pointer-events: none; /* пустые места панели пропускают клики и касания к видео */
   transition: opacity .25s, visibility 0s, right .25s;
@@ -388,9 +387,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .sourcebar {
   flex: none;
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px;
-  padding-left: calc(16px + var(--sal));
-  padding-right: calc(16px + var(--sar));
+  padding: 10px calc(16px + var(--sar)) 10px calc(16px + var(--sal));
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
@@ -442,7 +439,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .react-bar button { font-size: 21px; line-height: 1; padding: 6px; border-radius: 10px; transition: transform .1s, background .15s; }
 .react-bar button:hover { background: var(--panel-2); }
 .react-bar button:active { transform: scale(1.3); }
-.chat-form { flex: none; display: flex; gap: 8px; padding: 8px 10px 10px; padding-bottom: calc(10px + var(--sab)); }
+.chat-form { flex: none; display: flex; gap: 8px; padding: 8px 10px calc(10px + var(--sab)); }
 .chat-form .field { border-radius: 999px; padding: 9px 15px; }
 .send { width: 42px; height: 42px; flex: none; padding: 10px; border-radius: 50%; background: var(--accent); color: #fff; transition: background .15s, transform .1s; }
 .send:hover { background: var(--accent-hover); }
@@ -505,9 +502,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 .touch-ui .controls {
   top: 0;
   display: flex; flex-direction: column; justify-content: flex-end;
-  padding: 0 8px 4px;
-  padding-left: calc(8px + var(--sal));
-  padding-right: calc(8px + var(--sar));
+  padding: 0 calc(8px + var(--sar)) 4px calc(8px + var(--sal));
   background: linear-gradient(to top, rgba(0, 0, 0, .74), rgba(0, 0, 0, .3) 45%, rgba(0, 0, 0, .3));
 }
 .touch-ui.immersive .controls { padding-bottom: calc(6px + var(--sab)); }
@@ -560,19 +555,19 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
 
 /* ---------- телефоны и узкие окна ---------- */
 @media (max-width: 899px) {
-  .topbar { gap: 8px; padding: 8px 10px; padding-top: calc(8px + var(--sat)); padding-left: calc(10px + var(--sal)); padding-right: calc(10px + var(--sar)); }
+  .topbar { gap: 8px; padding: calc(8px + var(--sat)) calc(10px + var(--sar)) 8px calc(10px + var(--sal)); }
   .seg button { padding: 6px 10px; font-size: 12.5px; }
   .chip { padding: 3px 8px; font-size: 12px; max-width: 120px; }
   .layout { flex-direction: column; }
   .main-col { flex: none; }
   .stage { flex: none; width: 100%; height: min(56.25vw, 52vh); }
   .chat { width: auto; flex: 1; border-left: 0; padding-right: 0; }
-  .sourcebar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; padding-left: calc(10px + var(--sal)); padding-right: calc(10px + var(--sar)); }
+  .sourcebar { flex-wrap: wrap; gap: 8px; padding: 8px calc(10px + var(--sar)) 8px calc(10px + var(--sal)); }
   .src-actions { justify-content: flex-start; }
   .src-actions .btn { padding: 7px 10px; font-size: 13px; }
   .vol { display: none; }
   .ib { width: 36px; height: 36px; padding: 7px; }
-  .controls { padding: 26px 6px 2px; padding-left: calc(6px + var(--sal)); padding-right: calc(6px + var(--sar)); }
+  .controls { padding: 26px calc(6px + var(--sar)) 2px calc(6px + var(--sal)); }
   .empty { padding: 14px 16px 64px; gap: 6px; }
   .empty h2 { font-size: 17px; }
   .empty p { font-size: 13px; margin-bottom: 2px; }
@@ -586,6 +581,7 @@ video::cue { background: rgba(0, 0, 0, .62); color: #fff; }
   .src-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Окно выбора фильма — шторкой снизу */
   .modal { align-items: flex-end; padding: 0; }
+  /*noinspection CssOverwrittenProperties*/
   .sheet { width: 100%; max-height: 88vh; max-height: 88dvh; border-radius: 20px 20px 0 0; border-width: 1px 0 0; padding-bottom: var(--sab); animation: sheetUp .22s ease-out; }
   .sheet::before { content: ""; display: block; flex: none; width: 38px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: #3a3f4c; }
 }
